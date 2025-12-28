@@ -1,66 +1,79 @@
-# SKILLS – Expected AI Agent Capabilities
+# SKILLS.md – Expected Skills & Knowledge
 
-This document describes the skills AI agents should leverage when contributing
-to **MonAssmat**.
-
----
-
-## Business Domain Knowledge (Top Priority)
-
-- French childminder contracts (assistante maternelle)
-- distinction between facts, rights, and payments
-- paid leave:
-  - accrual
-  - consumption
-  - valuation (maintenance of salary vs one-tenth rule)
-- full-year vs incomplete-year contracts
-- retroactive recalculation and regularization
+This document describes the skills expected from contributors
+(human or AI) interacting with this project.
 
 ---
 
-## Technical Skills
+## Domain Knowledge (Required)
 
-### Backend
-- modern Python (typing, dataclasses, tests)
-- FastAPI (simple usage, no advanced patterns)
-- SQLAlchemy 2.x
-- clean relational data modeling
-- database migrations
+- French childcare employment rules (assistant(e) maternel(le))
+- Monthly salary vs actual worked hours
+- Paid leave concepts:
+  - acquisition period
+  - days taken
+  - salary maintenance
+  - 10% rule
+- Importance of historical correctness
 
-### Frontend
-- semantic HTML
-- Jinja2 templates
-- HTMX (pragmatic usage)
-- lightweight JavaScript (DOM events, calendar UI)
+You are not required to know all rules,
+but you must NOT invent them.
 
----
-
-## Architecture & Design
-
-- flat, low-depth project structure
-- refusal of unnecessary abstractions
-- strict separation between:
-  - stored data (facts)
-  - business logic
-  - orchestration / API layer
+When unsure: ask or isolate assumptions.
 
 ---
 
-## Critical Review Skills
+## Backend Engineering
 
-AI agents should be able to:
-- reject trendy but inappropriate solutions
-- propose simpler alternatives
-- identify future pain points early
-- clearly explain trade-offs
+- Python (clean, readable, explicit)
+- SQLAlchemy 2.x ORM usage
+- Relational data modeling
+- Alembic migrations
+- Writing testable pure functions
 
 ---
 
-## Quality Bar
+## Software Design Mindset
 
-This project prioritizes:
-- robustness
-- human readability
-- long-term maintainability
+- Favor clarity over abstraction
+- Respect existing architectural constraints
+- Avoid premature optimization
+- Be comfortable with flat architectures
+- Think in terms of data invariants
 
-An AI agent should behave like a **demanding co-maintainer**, not a snippet factory.
+---
+
+## Frontend Integration
+
+- Jinja2 templating
+- HTMX request/response patterns
+- Vanilla JavaScript interop
+- Server-driven UI philosophy
+
+---
+
+## Testing & Reliability
+
+- pytest basics
+- Edge cases over happy paths
+- Deterministic behavior
+- Reproducibility of calculations
+
+---
+
+## What You Should NOT Do
+
+- Assume scalability constraints
+- Introduce modern frontend stacks without justification
+- Apply enterprise patterns
+- “Improve” structure without justification
+
+---
+
+## Success Criteria
+
+A contribution is successful if:
+- It reduces ambiguity
+- It improves correctness
+- It keeps the project simple
+- It does not surprise the maintainer

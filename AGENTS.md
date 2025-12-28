@@ -1,75 +1,109 @@
-# AGENTS – Rules for AI Assistants
+# AGENTS.md – Rules for AI Assistants
 
-This file defines the rules that any AI assistant contributing to **MonAssmat**
-must follow.
+This project is intentionally simple, pragmatic, and conservative.
+Any AI assistant contributing to this codebase MUST follow the rules below.
 
----
-
-## Purpose of AI Agents
-
-AI agents are expected to help:
-- design correct and durable business logic
-- write simple, maintainable code
-- detect functional or conceptual inconsistencies
-- challenge technical decisions when appropriate
-
-Agents act as **critical co-maintainers**, not as code generators.
+Failure to respect these rules is considered a regression.
 
 ---
 
-## Core Principles
+## Core Principles (DO NOT VIOLATE)
 
-1. **Simplicity over cleverness**
-2. **No premature abstraction**
-3. **Business logic first**
-4. **Facts are stored, results are computed**
-5. **Everything must remain recalculable**
-6. **Prefer explicit code over architectural purity**
+1. **Do not introduce unnecessary abstractions**
+   - No DDD layers
+   - No service/repository/factory patterns
+   - No hexagonal or clean architecture
 
----
+2. **Do not increase directory depth**
+   - Maximum depth: 2
+   - Prefer new files over new folders
 
-## Explicit Prohibitions
+3. **Do not persist derived data**
+   - Database stores facts only
+   - All computed values must be recalculable
 
-AI agents MUST NOT:
-- introduce hexagonal / DDD architectures
-- add service / manager / repository layers without clear pain points
-- store computed results in the database
-- duplicate business logic on the frontend
-- turn the application into a SPA without strong justification
-
----
-
-## Expected Response Style
-
-- Direct
-- Pragmatic
-- Critical when needed
-- Low enthusiasm, high signal
-- No unnecessary jargon
-
-If a decision is bad, the agent must explicitly say so.
+4. **Do not mix concerns**
+   - ORM models → structure only
+   - Business logic → pure Python
+   - API layer → orchestration only
 
 ---
 
-## Decision Priority Order
+## File Responsibilities (STRICT)
 
-1. Business correctness
-2. Long-term maintainability
-3. Code readability
-4. Functional evolvability
-5. Performance (last)
+- `models.py`
+  - SQLAlchemy models only
+  - Constraints, relationships
+  - NO business logic
+
+- `logic.py`
+  - Pure functions
+  - No FastAPI, no ORM, no DB access
+  - Fully testable in isolation
+
+- `crud.py`
+  - Simple DB access helpers
+  - No calculations
+
+- `app.py`
+  - FastAPI routes
+  - Dependency injection
+  - Calls `crud` and `logic`
+
+- `schemas.py`
+  - Pydantic input/output schemas
+  - Validation only
 
 ---
 
-## Collaboration Rules
+## Allowed Technologies
 
-AI agents may:
-- propose improvements
-- point out inconsistencies
-- suggest tests and edge cases
+Backend:
+- Python 3.x
+- FastAPI
+- SQLAlchemy 2.x
+- Pydantic v2
+- Alembic
+- pytest
 
-AI agents must NOT:
-- enforce large refactors without identified pain
-- optimize for hypothetical future needs
+Frontend:
+- Jinja2 templates
+- HTMX
+- Vanilla JavaScript (existing calendar logic)
 
-Stability and clarity always come first.
+Database:
+- PostgreSQL (preferred)
+- SQLite (temporary only)
+
+---
+
+## Forbidden Practices
+
+- Storing computed totals in DB
+- Introducing async complexity without need
+- Introducing background jobs, queues, caches
+- Rewriting working JS in React/Vue/etc.
+- Over-optimizing performance
+
+---
+
+## How to Extend the Project
+
+When adding a feature:
+1. Update `README.md` (functional behavior)
+2. Add or update DB facts if needed
+3. Implement pure logic in `logic.py`
+4. Expose via API if necessary
+5. Add tests for logic first
+
+---
+
+## Decision Rule
+
+If unsure between:
+- simple vs clever → choose simple
+- explicit vs generic → choose explicit
+- duplication vs abstraction → allow duplication
+
+This is a personal, long-term maintainable tool.
+Not a framework. Not a product.
