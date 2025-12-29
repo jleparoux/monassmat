@@ -12,17 +12,13 @@ from sqlalchemy.orm import Session
 from . import crud
 from .calculations import ContractFacts, Period, WorkdayFacts
 from .calculations import WorkdayKind as CalcWorkdayKind
-from .calculations import (
-    contract_monthly_hours,
-    contract_monthly_salary,
-    hours_in_period,
-    value_hours,
-)
+from .calculations import (contract_monthly_hours, contract_monthly_salary,
+                           hours_in_period, value_hours)
 from .db import get_db, session_scope
 from .models import WorkdayKind
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
 
-BASE_DIR = Path(__file__).resolve().parents[2]  # .../monassmat/
+BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = FastAPI(title="MonAssmat")
