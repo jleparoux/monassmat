@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -12,8 +12,12 @@ from sqlalchemy.orm import Session
 from . import crud
 from .calculations import ContractFacts, Period, WorkdayFacts
 from .calculations import WorkdayKind as CalcWorkdayKind
-from .calculations import (contract_monthly_hours, contract_monthly_salary,
-                           hours_in_period, value_hours)
+from .calculations import (
+    contract_monthly_hours,
+    contract_monthly_salary,
+    hours_in_period,
+    value_hours,
+)
 from .db import get_db, session_scope
 from .models import WorkdayKind
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
@@ -27,39 +31,8 @@ templates = Jinja2Templates(directory=str(FRONTEND_DIR / "templates"))
 
 date_from_iso = date.fromisoformat
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
 
-
-@app.post("/contracts/{contract_id}/workdays")
-def upsert_workday(contract_id: int, payload: WorkdayUpsertIn):
-    with session_scope() as db:
-        contract = crud.get_contract(db, contract_id)
-        if not contract:
-            raise HTTPException(status_code=404, detail="Contract not found")
-
-        wd = crud.upsert_workday(
-            db,
-            contract_id=contract_id,
-            day=payload.date,
-            hours=payload.hours,
-            kind=payload.kind,
-        )
-        return {"id": wd.id, "contract_id": wd.contract_id, "date": wd.date}
-
-@app.get("/api/contracts/{contract_id}/workdays")
-def api_workdays(contract_id: int, start: date, end: date, db: Session = Depends(get_db)):
-    items = crud.list_workdays(db, contract_id=contract_id, start=start, end=end)
-    return {
-        "items": [
-            {"date": wd.date.isoformat(), "hours": wd.hours, "kind": wd.kind.value}
-            for wd in items
-        ]
-    }
-
-@app.get("/contracts/{contract_id}/summary/monthly", response_model=MonthlySummaryOut)
-def monthly_summary(contract_id: int, start: date, end: date):
+def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySummaryOut:
     with session_scope() as db:
         contract = crud.get_contract(db, contract_id)
         if not contract:
@@ -75,7 +48,6 @@ def monthly_summary(contract_id: int, start: date, end: date):
         hourly_rate=contract.hourly_rate,
     )
 
-    # map ORM -> facts (keep calculations pure)
     wd_facts = [
         WorkdayFacts(
             day=wd.date,
@@ -102,6 +74,45 @@ def monthly_summary(contract_id: int, start: date, end: date):
         salary_real_estimated=real_salary_est,
     )
 
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/api/contracts/{contract_id}/workdays")
+def upsert_workday_api(contract_id: int, payload: WorkdayUpsertIn):
+    with session_scope() as db:
+        contract = crud.get_contract(db, contract_id)
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
+
+        wd = crud.upsert_workday(
+            db,
+            contract_id=contract_id,
+            day=payload.date,
+            hours=payload.hours,
+            kind=payload.kind,
+        )
+        return {"id": wd.id, "contract_id": wd.contract_id, "date": wd.date}
+
+
+@app.get("/api/contracts/{contract_id}/workdays")
+def api_workdays(contract_id: int, start: date, end: date, db: Session = Depends(get_db)):
+    items = crud.list_workdays(db, contract_id=contract_id, start=start, end=end)
+    return {
+        "items": [
+            {"date": wd.date.isoformat(), "hours": wd.hours, "kind": wd.kind.value}
+            for wd in items
+        ]
+    }
+
+
+@app.get("/contracts/{contract_id}/summary/monthly", response_model=MonthlySummaryOut)
+def monthly_summary(contract_id: int, start: date, end: date):
+    return build_month_summary(contract_id, start, end)
+
+
 @app.get("/contracts/{contract_id}/calendar", response_class=HTMLResponse)
 def calendar_page(contract_id: int, request: Request, initial_date: date | None = None):
     if initial_date is None:
@@ -116,9 +127,9 @@ def calendar_page(contract_id: int, request: Request, initial_date: date | None 
         },
     )
 
+
 @app.get("/contracts/{contract_id}/day_form", response_class=HTMLResponse)
 def day_form(contract_id: int, day: date, request: Request, db: Session = Depends(get_db)):
-    # cherche s'il existe déjà une entrée
     wds = crud.list_workdays(db, contract_id=contract_id, start=day, end=day)
     existing = wds[0] if wds else None
 
@@ -131,35 +142,57 @@ def day_form(contract_id: int, day: date, request: Request, db: Session = Depend
             "hours": (existing.hours if existing else 0),
             "kind": (existing.kind.value if existing else WorkdayKind.NORMAL.value),
             "kinds": [k.value for k in WorkdayKind],
+            "saved": False,
         },
     )
+
+
+@app.get("/contracts/{contract_id}/month_summary", response_class=HTMLResponse)
+def month_summary(contract_id: int, start: date, end: date, request: Request):
+    summary = build_month_summary(contract_id, start, end)
+    return templates.TemplateResponse(
+        "partials/month_summary.html",
+        {
+            "request": request,
+            "period_start": summary.period_start,
+            "period_end": summary.period_end,
+            "monthly_hours_theoretical": summary.monthly_hours_theoretical,
+            "monthly_salary_theoretical": summary.monthly_salary_theoretical,
+            "hours_real": summary.hours_real,
+            "salary_real_estimated": summary.salary_real_estimated,
+        },
+    )
+
 
 @app.post("/contracts/{contract_id}/workdays", response_class=HTMLResponse)
 def save_workday(
     contract_id: int,
     request: Request,
-    date: str = Form(...),
+    date_str: str = Form(..., alias="date"),
     hours: float = Form(...),
     kind: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    day = date  # déjà en iso
+    day = date_from_iso(date_str)
     wd = crud.upsert_workday(
         db,
         contract_id=contract_id,
-        day=date_from_iso(day),   # à implémenter ou parse via datetime.date.fromisoformat
+        day=day,
         hours=hours,
         kind=WorkdayKind(kind),
     )
     db.commit()
 
-    # fragment "après save"
-    html = templates.get_template("partials/day_panel.html").render(
+    html = templates.get_template("partials/day_form.html").render(
         request=request,
-        selected_date=wd.date.isoformat(),
+        contract_id=contract_id,
+        day=day.isoformat(),
+        hours=wd.hours,
+        kind=wd.kind.value,
+        kinds=[k.value for k in WorkdayKind],
+        saved=True,
     )
 
-    # Trigger côté client pour refresh du mois
     resp = HTMLResponse(html)
     resp.headers["HX-Trigger"] = "workday:changed"
     return resp
