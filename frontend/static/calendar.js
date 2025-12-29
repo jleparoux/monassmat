@@ -175,6 +175,13 @@
     }
   }
 
+  function showSummaryError() {
+    const target = document.getElementById("monthSummary");
+    if (target) {
+      target.innerHTML = '<div class="empty">Synthese indisponible pour ce mois.</div>';
+    }
+  }
+
   function refreshSummary() {
     const start = startOfMonth(current);
     const end = endOfMonth(current);
@@ -192,6 +199,7 @@
       })
       .catch((err) => {
         console.error(err);
+        showSummaryError();
       });
   }
 

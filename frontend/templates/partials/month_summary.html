@@ -1,18 +1,22 @@
-<div class="summary-list">
-  <div class="summary-row">
-    <span class="label">Heures theoriques</span>
-    <span class="value">{{ monthly_hours_theoretical | round(2) }} h</span>
-  </div>
-  <div class="summary-row">
-    <span class="label">Heures reelles</span>
-    <span class="value">{{ hours_real | round(2) }} h</span>
-  </div>
-  <div class="summary-row">
-    <span class="label">Salaire theorique</span>
-    <span class="value">{{ monthly_salary_theoretical | round(2) }} €</span>
-  </div>
-  <div class="summary-row">
-    <span class="label">Salaire estime</span>
-    <span class="value highlight">{{ salary_real_estimated | round(2) }} €</span>
+<div class="summary-section">
+  <div class="summary-title">Statistiques mensuelles</div>
+  <div class="summary-list">
+    <div class="summary-row">
+      <span class="label">Heures contractuelles</span>
+      <span class="value">{{ monthly_hours_theoretical | round(2) }} h</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Heures reelles</span>
+      <span class="value">{{ hours_real | round(2) }} h</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Salaire mensualise</span>
+      <span class="value">{{ monthly_salary_theoretical | round(2) }} €</span>
+    </div>
+    <div class="divider"></div>
+    <div class="summary-row">
+      <span class="label">Salaire estime</span>
+      <span class="value highlight">{{ salary_real_estimated | round(2) }} €</span>
+    </div>
   </div>
 </div>
