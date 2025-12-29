@@ -62,10 +62,10 @@
   }
 
   function kindBadge(kind) {
-    if (kind === "normal") return ["badge badge--work", "work"];
-    if (kind === "absence") return ["badge badge--absence", "absence"];
-    if (kind === "unpaid_leave") return ["badge badge--unpaid", "unpaid"];
-    return ["badge", kind];
+    if (kind === "normal") return ["cell--work", "Travaille"];
+    if (kind === "absence") return ["cell--absence", "Absence"];
+    if (kind === "unpaid_leave") return ["cell--unpaid", "Sans solde"];
+    return ["", ""];
   }
 
   function render(d, workdaysByDate) {
@@ -95,9 +95,22 @@
       const dt = new Date(d.getFullYear(), d.getMonth(), day);
       const key = ymd(dt);
       const wd = workdaysByDate.get(key);
+      const isToday = dt.toDateString() === new Date().toDateString();
+      const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
 
       const cell = document.createElement("div");
-      cell.className = "cell";
+      const classes = ["cell"];
+      if (isToday) classes.push("cell--today");
+      if (isWeekend) classes.push("cell--weekend");
+
+      let statusLabel = "";
+      if (wd) {
+        const [kindClass, kindLabel] = kindBadge(wd.kind);
+        if (kindClass) classes.push(kindClass);
+        statusLabel = kindLabel;
+      }
+
+      cell.className = classes.join(" ");
       cell.dataset.day = key;
 
       const num = document.createElement("div");
@@ -105,12 +118,18 @@
       num.textContent = String(day);
       cell.appendChild(num);
 
+      if (statusLabel) {
+        const meta = document.createElement("div");
+        meta.className = "cell__meta";
+        meta.textContent = statusLabel;
+        cell.appendChild(meta);
+      }
+
       if (wd) {
-        const [cls, labelText] = kindBadge(wd.kind);
-        const badge = document.createElement("div");
-        badge.className = cls;
-        badge.textContent = `${wd.hours}h · ${labelText}`;
-        cell.appendChild(badge);
+        const hours = document.createElement("div");
+        hours.className = "cell__hours";
+        hours.textContent = `${wd.hours}h`;
+        cell.appendChild(hours);
       }
 
       cell.addEventListener("click", () => openDay(key));
