@@ -1,0 +1,147 @@
+(function () {
+  const el = document.getElementById("calendar");
+  if (!el) return;
+
+  const contractId = el.dataset.contractId;
+  let current = el.dataset.initialDate ? new Date(el.dataset.initialDate) : new Date();
+
+  const monthTitle = document.getElementById("monthTitle");
+  const prevBtn = document.getElementById("prevMonth");
+  const nextBtn = document.getElementById("nextMonth");
+
+  function ymd(d) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function startOfMonth(d) {
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+
+  function endOfMonth(d) {
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  }
+
+  function dowHeaders(container) {
+    const names = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+    const row = document.createElement("div");
+    row.className = "grid";
+    for (const n of names) {
+      const c = document.createElement("div");
+      c.className = "dow";
+      c.textContent = n;
+      row.appendChild(c);
+    }
+    container.appendChild(row);
+  }
+
+  function jsDowToMonFirst(jsDow) {
+    // JS: 0=Sun..6=Sat → Mon-first: 0=Mon..6=Sun
+    return (jsDow + 6) % 7;
+  }
+
+  async function fetchMonthData(d) {
+    const start = startOfMonth(d);
+    const end = endOfMonth(d);
+    const url = `/api/contracts/${contractId}/workdays?start=${ymd(start)}&end=${ymd(end)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch workdays");
+    return await res.json(); // { items: [{date,hours,kind}] }
+  }
+
+  function kindBadge(kind) {
+    if (kind === "normal") return ["badge badge--work", "work"];
+    if (kind === "absence") return ["badge badge--absence", "absence"];
+    if (kind === "unpaid_leave") return ["badge badge--unpaid", "unpaid"];
+    return ["badge", kind];
+  }
+
+  function render(d, workdaysByDate) {
+    el.innerHTML = "";
+
+    const m = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    monthTitle.textContent = m.charAt(0).toUpperCase() + m.slice(1);
+
+    dowHeaders(el);
+
+    const grid = document.createElement("div");
+    grid.className = "grid";
+
+    const first = startOfMonth(d);
+    const last = endOfMonth(d);
+    const firstOffset = jsDowToMonFirst(first.getDay());
+
+    // Days from previous month (muted)
+    for (let i = 0; i < firstOffset; i++) {
+      const cell = document.createElement("div");
+      cell.className = "cell cell--muted";
+      grid.appendChild(cell);
+    }
+
+    // Current month days
+    for (let day = 1; day <= last.getDate(); day++) {
+      const dt = new Date(d.getFullYear(), d.getMonth(), day);
+      const key = ymd(dt);
+      const wd = workdaysByDate.get(key);
+
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.dataset.day = key;
+
+      const num = document.createElement("div");
+      num.className = "daynum";
+      num.textContent = String(day);
+      cell.appendChild(num);
+
+      if (wd) {
+        const [cls, label] = kindBadge(wd.kind);
+        const badge = document.createElement("div");
+        badge.className = cls;
+        badge.textContent = `${wd.hours}h · ${label}`;
+        cell.appendChild(badge);
+      }
+
+      cell.addEventListener("click", () => openDay(key));
+      grid.appendChild(cell);
+    }
+
+    el.appendChild(grid);
+  }
+
+  function openDay(day) {
+    // charge le formulaire dans le panneau de droite
+    const target = document.getElementById("dayPanelBody");
+    if (!target) return;
+
+    const url = `/contracts/${contractId}/day_form?day=${day}`;
+    htmx.ajax("GET", url, { target: "#dayPanelBody", swap: "innerHTML" });
+
+    const label = document.getElementById("selectedDateLabel");
+    if (label) label.textContent = day;
+  }
+
+  async function refresh() {
+    const payload = await fetchMonthData(current);
+    const byDate = new Map(payload.items.map(x => [x.date, x]));
+    render(current, byDate);
+  }
+
+  prevBtn?.addEventListener("click", async () => {
+    current = new Date(current.getFullYear(), current.getMonth() - 1, 1);
+    await refresh();
+  });
+
+  nextBtn?.addEventListener("click", async () => {
+    current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+    await refresh();
+  });
+
+  // When HTMX saves a day, refresh month (simple + reliable)
+  document.body.addEventListener("workday:changed", async () => {
+    await refresh();
+  });
+
+  refresh().catch(console.error);
+})();

@@ -1,0 +1,39 @@
+<div class="form">
+  <div class="row">
+    <div class="label">Date</div>
+    <div class="value"><strong>{{ day }}</strong></div>
+  </div>
+
+  <form
+    hx-post="/contracts/{{ contract_id }}/workdays"
+    hx-target="#dayPanelBody"
+    hx-swap="innerHTML"
+    hx-headers='{"X-Day":"{{ day }}"}'
+  >
+    <input type="hidden" name="date" value="{{ day }}"/>
+
+    <label class="field">
+      <span>Heures</span>
+      <input name="hours" type="number" step="0.25" min="0" value="{{ hours or 0 }}" required />
+    </label>
+
+    <label class="field">
+      <span>Type</span>
+      <select name="kind" required>
+        {% for k in kinds %}
+          <option value="{{ k }}" {% if kind == k %}selected{% endif %}>{{ k }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="actions">
+      <button class="btn btn--primary" type="submit">Enregistrer</button>
+      <button class="btn" type="button"
+              hx-get="/contracts/{{ contract_id }}/day_panel?day={{ day }}"
+              hx-target="#dayPanelBody"
+              hx-swap="innerHTML">
+        Annuler
+      </button>
+    </div>
+  </form>
+</div>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ title or "MonAssmat" }}</title>
+
+  <link rel="stylesheet" href="/static/app.css" />
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="container topbar__inner">
+      <div class="brand">MonAssmat</div>
+      <div class="topbar__meta">
+        <span class="chip">Contract #{{ contract_id }}</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script src="/static/calendar.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

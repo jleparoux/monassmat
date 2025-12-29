@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="layout">
+  <section class="card">
+    <div class="card__header">
+      <div class="toolbar">
+        <button class="btn" id="prevMonth">◀</button>
+        <div class="title" id="monthTitle">—</div>
+        <button class="btn" id="nextMonth">▶</button>
+      </div>
+
+      <div class="legend">
+        <span class="legend__item"><span class="dot dot--work"></span> travaillé</span>
+        <span class="legend__item"><span class="dot dot--absence"></span> absence</span>
+        <span class="legend__item"><span class="dot dot--unpaid"></span> congé sans solde</span>
+      </div>
+    </div>
+
+    <div class="calendar" id="calendar"
+         data-contract-id="{{ contract_id }}"
+         data-initial-date="{{ initial_date }}">
+      <!-- JS render -->
+    </div>
+  </section>
+
+  <aside class="card" id="dayPanel">
+    {% include "partials/day_panel.html" %}
+  </aside>
+</div>
+
+{% endblock %}
