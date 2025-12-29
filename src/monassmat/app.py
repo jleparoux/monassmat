@@ -143,6 +143,8 @@ def day_form(contract_id: int, day: date, request: Request, db: Session = Depend
             "kind": (existing.kind.value if existing else WorkdayKind.NORMAL.value),
             "kinds": [k.value for k in WorkdayKind],
             "saved": False,
+            "deleted": False,
+            "has_entry": existing is not None,
         },
     )
 
@@ -191,6 +193,36 @@ def save_workday(
         kind=wd.kind.value,
         kinds=[k.value for k in WorkdayKind],
         saved=True,
+        deleted=False,
+        has_entry=True,
+    )
+
+    resp = HTMLResponse(html)
+    resp.headers["HX-Trigger"] = "workday:changed"
+    return resp
+
+
+@app.post("/contracts/{contract_id}/workdays/delete", response_class=HTMLResponse)
+def delete_workday(
+    contract_id: int,
+    request: Request,
+    date_str: str = Form(..., alias="date"),
+    db: Session = Depends(get_db),
+):
+    day = date_from_iso(date_str)
+    deleted = crud.delete_workday(db, contract_id=contract_id, day=day)
+    db.commit()
+
+    html = templates.get_template("partials/day_form.html").render(
+        request=request,
+        contract_id=contract_id,
+        day=day.isoformat(),
+        hours=0,
+        kind=WorkdayKind.NORMAL.value,
+        kinds=[k.value for k in WorkdayKind],
+        saved=False,
+        deleted=deleted,
+        has_entry=False,
     )
 
     resp = HTMLResponse(html)

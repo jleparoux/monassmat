@@ -42,3 +42,13 @@ def upsert_workday(
     wd = Workday(contract_id=contract_id, date=day, hours=hours, kind=kind)
     db.add(wd)
     return wd
+
+
+def delete_workday(db: Session, *, contract_id: int, day: date) -> bool:
+    stmt = select(Workday).where(Workday.contract_id == contract_id, Workday.date == day)
+    existing = db.scalar(stmt)
+    if not existing:
+        return False
+
+    db.delete(existing)
+    return True

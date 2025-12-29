@@ -7,6 +7,9 @@
   {% if saved %}
     <div class="notice notice--ok">Enregistre.</div>
   {% endif %}
+  {% if deleted %}
+    <div class="notice notice--ok">Supprime.</div>
+  {% endif %}
 
   {% set labels = {
     "normal": "Journee de travail",
@@ -41,6 +44,19 @@
     </div>
 
     <div class="actions">
+      {% if has_entry %}
+        <button
+          class="btn btn-secondary"
+          type="button"
+          hx-post="/contracts/{{ contract_id }}/workdays/delete"
+          hx-include="closest form"
+          hx-target="#modalContent"
+          hx-swap="innerHTML"
+          hx-confirm="Supprimer la saisie de ce jour ?"
+        >
+          Supprimer
+        </button>
+      {% endif %}
       <button class="btn btn-secondary" type="button" data-close="true">Annuler</button>
       <button class="btn btn-primary" type="submit">Sauvegarder</button>
     </div>
