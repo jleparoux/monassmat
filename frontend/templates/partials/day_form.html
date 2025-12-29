@@ -4,13 +4,16 @@
     <div class="value"><strong>{{ day }}</strong></div>
   </div>
 
+  {% if saved %}
+    <div class="notice notice--ok">Enregistré.</div>
+  {% endif %}
+
   <form
     hx-post="/contracts/{{ contract_id }}/workdays"
-    hx-target="#dayPanelBody"
+    hx-target="#modalContent"
     hx-swap="innerHTML"
-    hx-headers='{"X-Day":"{{ day }}"}'
   >
-    <input type="hidden" name="date" value="{{ day }}"/>
+    <input type="hidden" name="date" value="{{ day }}" />
 
     <label class="field">
       <span>Heures</span>
@@ -28,12 +31,7 @@
 
     <div class="actions">
       <button class="btn btn--primary" type="submit">Enregistrer</button>
-      <button class="btn" type="button"
-              hx-get="/contracts/{{ contract_id }}/day_panel?day={{ day }}"
-              hx-target="#dayPanelBody"
-              hx-swap="innerHTML">
-        Annuler
-      </button>
+      <button class="btn" type="button" data-close="true">Annuler</button>
     </div>
   </form>
 </div>

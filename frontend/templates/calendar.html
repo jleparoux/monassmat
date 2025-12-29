@@ -2,12 +2,12 @@
 {% block content %}
 
 <div class="layout">
-  <section class="card">
+  <section class="card calendar-card">
     <div class="card__header">
       <div class="toolbar">
-        <button class="btn" id="prevMonth">◀</button>
+        <button class="btn" id="prevMonth" type="button">◀</button>
         <div class="title" id="monthTitle">—</div>
-        <button class="btn" id="nextMonth">▶</button>
+        <button class="btn" id="nextMonth" type="button">▶</button>
       </div>
 
       <div class="legend">
@@ -20,13 +20,32 @@
     <div class="calendar" id="calendar"
          data-contract-id="{{ contract_id }}"
          data-initial-date="{{ initial_date }}">
-      <!-- JS render -->
+      <div class="empty">Chargement du mois…</div>
     </div>
   </section>
 
-  <aside class="card" id="dayPanel">
-    {% include "partials/day_panel.html" %}
+  <aside class="card summary-card">
+    <div class="card__header">
+      <div class="title">Synthèse mensuelle</div>
+      <div class="muted" id="summaryPeriod">—</div>
+    </div>
+    <div class="card__body" id="monthSummary">
+      <div class="empty">Chargement…</div>
+    </div>
   </aside>
+</div>
+
+<div class="modal" id="dayModal" aria-hidden="true">
+  <div class="modal__backdrop" data-close="true"></div>
+  <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal__header">
+      <div class="title" id="modalTitle">Jour</div>
+      <button class="icon-btn" type="button" data-close="true">✕</button>
+    </div>
+    <div class="modal__body" id="modalContent">
+      <div class="empty">Sélectionne un jour dans le calendrier.</div>
+    </div>
+  </div>
 </div>
 
 {% endblock %}

@@ -6,8 +6,13 @@
   let current = el.dataset.initialDate ? new Date(el.dataset.initialDate) : new Date();
 
   const monthTitle = document.getElementById("monthTitle");
+  const summaryPeriod = document.getElementById("summaryPeriod");
   const prevBtn = document.getElementById("prevMonth");
   const nextBtn = document.getElementById("nextMonth");
+
+  const modal = document.getElementById("dayModal");
+  const modalTitle = document.getElementById("modalTitle");
+  const modalContent = document.getElementById("modalContent");
 
   function ymd(d) {
     const yyyy = d.getFullYear();
@@ -38,7 +43,6 @@
   }
 
   function jsDowToMonFirst(jsDow) {
-    // JS: 0=Sun..6=Sat → Mon-first: 0=Mon..6=Sun
     return (jsDow + 6) % 7;
   }
 
@@ -48,7 +52,13 @@
     const url = `/api/contracts/${contractId}/workdays?start=${ymd(start)}&end=${ymd(end)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error("Failed to fetch workdays");
-    return await res.json(); // { items: [{date,hours,kind}] }
+    return await res.json();
+  }
+
+  async function fetchHtml(url) {
+    const res = await fetch(url, { headers: { "X-Requested-With": "fetch" } });
+    if (!res.ok) throw new Error("Failed to fetch HTML");
+    return await res.text();
   }
 
   function kindBadge(kind) {
@@ -62,7 +72,9 @@
     el.innerHTML = "";
 
     const m = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-    monthTitle.textContent = m.charAt(0).toUpperCase() + m.slice(1);
+    const label = m.charAt(0).toUpperCase() + m.slice(1);
+    monthTitle.textContent = label;
+    if (summaryPeriod) summaryPeriod.textContent = label;
 
     dowHeaders(el);
 
@@ -73,14 +85,12 @@
     const last = endOfMonth(d);
     const firstOffset = jsDowToMonFirst(first.getDay());
 
-    // Days from previous month (muted)
     for (let i = 0; i < firstOffset; i++) {
       const cell = document.createElement("div");
       cell.className = "cell cell--muted";
       grid.appendChild(cell);
     }
 
-    // Current month days
     for (let day = 1; day <= last.getDate(); day++) {
       const dt = new Date(d.getFullYear(), d.getMonth(), day);
       const key = ymd(dt);
@@ -96,10 +106,10 @@
       cell.appendChild(num);
 
       if (wd) {
-        const [cls, label] = kindBadge(wd.kind);
+        const [cls, labelText] = kindBadge(wd.kind);
         const badge = document.createElement("div");
         badge.className = cls;
-        badge.textContent = `${wd.hours}h · ${label}`;
+        badge.textContent = `${wd.hours}h · ${labelText}`;
         cell.appendChild(badge);
       }
 
@@ -110,22 +120,72 @@
     el.appendChild(grid);
   }
 
-  function openDay(day) {
-    // charge le formulaire dans le panneau de droite
-    const target = document.getElementById("dayPanelBody");
-    if (!target) return;
+  function openModal() {
+    if (!modal) return;
+    modal.classList.add("is-open");
+    modal.setAttribute("aria-hidden", "false");
+  }
+
+  function closeModal() {
+    if (!modal) return;
+    modal.classList.remove("is-open");
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  async function openDay(day) {
+    if (modalTitle) modalTitle.textContent = `Jour ${day}`;
+    if (modalContent) {
+      modalContent.innerHTML = '<div class="empty">Chargement…</div>';
+    }
+    openModal();
 
     const url = `/contracts/${contractId}/day_form?day=${day}`;
-    htmx.ajax("GET", url, { target: "#dayPanelBody", swap: "innerHTML" });
+    if (window.htmx && typeof window.htmx.ajax === "function") {
+      window.htmx.ajax("GET", url, { target: "#modalContent", swap: "innerHTML" });
+      return;
+    }
 
-    const label = document.getElementById("selectedDateLabel");
-    if (label) label.textContent = day;
+    try {
+      const html = await fetchHtml(url);
+      if (modalContent) modalContent.innerHTML = html;
+    } catch (err) {
+      if (modalContent) {
+        modalContent.innerHTML = '<div class="empty">Impossible de charger le formulaire.</div>';
+      }
+      console.error(err);
+    }
+  }
+
+  function refreshSummary() {
+    const start = startOfMonth(current);
+    const end = endOfMonth(current);
+    const url = `/contracts/${contractId}/month_summary?start=${ymd(start)}&end=${ymd(end)}`;
+
+    if (window.htmx && typeof window.htmx.ajax === "function") {
+      window.htmx.ajax("GET", url, { target: "#monthSummary", swap: "innerHTML" });
+      return;
+    }
+
+    fetchHtml(url)
+      .then((html) => {
+        const target = document.getElementById("monthSummary");
+        if (target) target.innerHTML = html;
+      })
+      .catch((err) => {
+        console.error(err);
+      });
   }
 
   async function refresh() {
-    const payload = await fetchMonthData(current);
+    let payload = { items: [] };
+    try {
+      payload = await fetchMonthData(current);
+    } catch (err) {
+      console.error(err);
+    }
     const byDate = new Map(payload.items.map(x => [x.date, x]));
     render(current, byDate);
+    refreshSummary();
   }
 
   prevBtn?.addEventListener("click", async () => {
@@ -138,8 +198,19 @@
     await refresh();
   });
 
-  // When HTMX saves a day, refresh month (simple + reliable)
+  modal?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target && target instanceof HTMLElement && target.dataset.close) {
+      closeModal();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeModal();
+  });
+
   document.body.addEventListener("workday:changed", async () => {
+    closeModal();
     await refresh();
   });
 
