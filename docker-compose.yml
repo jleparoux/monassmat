@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: monassmat-db
+    environment:
+      POSTGRES_USER: monassmat
+      POSTGRES_PASSWORD: monassmat
+      POSTGRES_DB: monassmat
+    ports:
+      - "5432:5432"
+    volumes:
+      - monassmat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monassmat -d monassmat"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  monassmat_pgdata:
