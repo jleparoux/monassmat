@@ -1,9 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import Enum
 
-from sqlalchemy import Date, DateTime
+from sqlalchemy import Boolean, Date, DateTime
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, Integer, String, Time, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # ---------------------------------------------------------------------------
@@ -106,6 +106,12 @@ class Workday(Base):
 
     date: Mapped[date] = mapped_column(Date, nullable=False)
     hours: Mapped[float] = mapped_column(Float, nullable=False)
+
+    start_time: Mapped[time | None] = mapped_column(Time)
+    end_time: Mapped[time | None] = mapped_column(Time)
+
+    fee_meal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    fee_maintenance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     kind: Mapped[WorkdayKind] = mapped_column(
         SQLEnum(WorkdayKind), nullable=False

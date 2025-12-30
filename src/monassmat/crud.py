@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,6 +30,10 @@ def upsert_workday(
     day: date,
     hours: float,
     kind: WorkdayKind,
+    start_time: time | None = None,
+    end_time: time | None = None,
+    fee_meal: bool = False,
+    fee_maintenance: bool = False,
 ) -> Workday:
     stmt = select(Workday).where(Workday.contract_id == contract_id, Workday.date == day)
     existing = db.scalar(stmt)
@@ -37,9 +41,22 @@ def upsert_workday(
     if existing:
         existing.hours = hours
         existing.kind = kind
+        existing.start_time = start_time
+        existing.end_time = end_time
+        existing.fee_meal = fee_meal
+        existing.fee_maintenance = fee_maintenance
         return existing
 
-    wd = Workday(contract_id=contract_id, date=day, hours=hours, kind=kind)
+    wd = Workday(
+        contract_id=contract_id,
+        date=day,
+        hours=hours,
+        kind=kind,
+        start_time=start_time,
+        end_time=end_time,
+        fee_meal=fee_meal,
+        fee_maintenance=fee_maintenance,
+    )
     db.add(wd)
     return wd
 

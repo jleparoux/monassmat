@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from enum import Enum
 from typing import Iterable
 
@@ -44,9 +44,17 @@ def _assert_positive(name: str, value: float) -> None:
         raise ValueError(f"{name} must be > 0 (got {value})")
 
 
+def hours_between_times(start: time, end: time) -> float:
+    start_minutes = start.hour * 60 + start.minute
+    end_minutes = end.hour * 60 + end.minute
+    if end_minutes <= start_minutes:
+        raise ValueError("end time must be after start time")
+    return (end_minutes - start_minutes) / 60.0
+
+
 def contract_monthly_hours(contract: ContractFacts) -> float:
     """
-    Monthly hours in 'année incomplète' style:
+    Monthly hours in 'annee incomplete' style:
         hours_per_week * weeks_per_year / 12
     """
     _assert_positive("hours_per_week", contract.hours_per_week)
@@ -107,7 +115,7 @@ def paid_leave_acquired_days_v1(
     V1 heuristic scaffold:
     - We compute number of 'worked days' (NORMAL) in the acquisition period
     - Then apply a simple proportional rule.
-    
+
     IMPORTANT:
     This is NOT a full legal implementation.
     It is a placeholder until we codify the exact rules we want.
@@ -120,7 +128,7 @@ def paid_leave_acquired_days_v1(
         if acquisition_period.start <= wd.day <= acquisition_period.end and wd.kind == WorkdayKind.NORMAL:
             worked_days += 1
 
-    # Placeholder: 2.5 days per 4 weeks approx → 2.5 per 20 worked days rough proxy
+    # Placeholder: 2.5 days per 4 weeks approx -> 2.5 per 20 worked days rough proxy
     # You will replace this once rules are specified precisely.
     return (worked_days / 20.0) * 2.5
 
