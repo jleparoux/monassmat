@@ -33,14 +33,37 @@
       </select>
     </label>
 
-    <label class="field">
-      <span>Heures</span>
-      <input name="hours" type="number" step="0.25" min="0" value="{{ hours or 0 }}" required />
-    </label>
+    <div class="field-group">
+      <label class="field">
+        <span>Heure de depose</span>
+        <input name="start_time" type="time" value="{{ start_time }}" />
+      </label>
+      <label class="field">
+        <span>Heure de reprise</span>
+        <input name="end_time" type="time" value="{{ end_time }}" />
+      </label>
+    </div>
+
+    <div class="field check-group">
+      <label class="checkbox">
+        <input name="fee_meal" type="checkbox" {% if fee_meal %}checked{% endif %} />
+        <span>Frais de repas</span>
+      </label>
+      <label class="checkbox">
+        <input name="fee_maintenance" type="checkbox" {% if fee_maintenance %}checked{% endif %} />
+        <span>Frais d'entretien</span>
+      </label>
+    </div>
 
     <div class="preview">
       <div class="preview__label">Apercu</div>
-      <div class="preview__value">{{ hours or 0 }} h</div>
+      <div class="preview__value" id="dayPreviewValue">
+        {% if start_time and end_time %}
+          {{ start_time }} - {{ end_time }}
+        {% else %}
+          {{ hours or 0 }} h
+        {% endif %}
+      </div>
     </div>
 
     <div class="actions">

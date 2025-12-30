@@ -118,6 +118,22 @@
       num.textContent = String(day);
       cell.appendChild(num);
 
+      if (wd && (wd.fee_meal || wd.fee_maintenance)) {
+        const indicator = document.createElement("div");
+        indicator.className = "fee-indicator";
+        if (wd.fee_meal) {
+          const meal = document.createElement("div");
+          meal.className = "fee-dot fee-dot--meal";
+          indicator.appendChild(meal);
+        }
+        if (wd.fee_maintenance) {
+          const maintenance = document.createElement("div");
+          maintenance.className = "fee-dot fee-dot--maintenance";
+          indicator.appendChild(maintenance);
+        }
+        cell.appendChild(indicator);
+      }
+
       if (statusLabel) {
         const meta = document.createElement("div");
         meta.className = "cell__meta";
@@ -125,7 +141,14 @@
         cell.appendChild(meta);
       }
 
-      if (wd) {
+      if (wd && wd.start_time && wd.end_time) {
+        const timeRange = document.createElement("div");
+        timeRange.className = "cell__time";
+        timeRange.textContent = `${wd.start_time} - ${wd.end_time}`;
+        cell.appendChild(timeRange);
+      }
+
+      if (wd && wd.hours && wd.hours > 0) {
         const hours = document.createElement("div");
         hours.className = "cell__hours";
         hours.textContent = `${wd.hours}h`;
@@ -151,6 +174,42 @@
     modal.setAttribute("aria-hidden", "true");
   }
 
+  function parseTime(value) {
+    if (!value) return null;
+    const [hh, mm] = value.split(":").map(Number);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    return hh * 60 + mm;
+  }
+
+  function formatHours(minutes) {
+    const hours = minutes / 60;
+    return `${hours.toFixed(2).replace(".00", "")}h`;
+  }
+
+  function updatePreview(container) {
+    const preview = container.querySelector("#dayPreviewValue");
+    if (!preview) return;
+    const startInput = container.querySelector("input[name='start_time']");
+    const endInput = container.querySelector("input[name='end_time']");
+    if (!startInput || !endInput) return;
+
+    const startValue = parseTime(startInput.value);
+    const endValue = parseTime(endInput.value);
+
+    if (startValue !== null && endValue !== null && endValue > startValue) {
+      const minutes = endValue - startValue;
+      preview.textContent = `${startInput.value} - ${endInput.value} (${formatHours(minutes)})`;
+      return;
+    }
+
+    if (startInput.value || endInput.value) {
+      preview.textContent = `${startInput.value || "--:--"} - ${endInput.value || "--:--"}`;
+      return;
+    }
+
+    preview.textContent = "0 h";
+  }
+
   async function openDay(day) {
     if (modalTitle) modalTitle.textContent = `Jour ${day}`;
     if (modalContent) {
@@ -167,6 +226,7 @@
     try {
       const html = await fetchHtml(url);
       if (modalContent) modalContent.innerHTML = html;
+      updatePreview(modalContent);
     } catch (err) {
       if (modalContent) {
         modalContent.innerHTML = '<div class="empty">Impossible de charger le formulaire.</div>';
@@ -186,11 +246,6 @@
     const start = startOfMonth(current);
     const end = endOfMonth(current);
     const url = `/contracts/${contractId}/month_summary?start=${ymd(start)}&end=${ymd(end)}`;
-
-    if (window.htmx && typeof window.htmx.ajax === "function") {
-      window.htmx.ajax("GET", url, { target: "#monthSummary", swap: "innerHTML" });
-      return;
-    }
 
     fetchHtml(url)
       .then((html) => {
@@ -229,6 +284,24 @@
     const target = event.target;
     if (target && target instanceof HTMLElement && target.dataset.close) {
       closeModal();
+    }
+  });
+
+  modalContent?.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (
+      target.matches("input[name='start_time']") ||
+      target.matches("input[name='end_time']")
+    ) {
+      updatePreview(modalContent);
+    }
+  });
+
+  document.addEventListener("htmx:afterSwap", (event) => {
+    const target = event.target;
+    if (target && target.id === "modalContent") {
+      updatePreview(target);
     }
   });
 

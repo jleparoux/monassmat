@@ -10,10 +10,18 @@
       <span class="value">{{ hours_real | round(2) }} h</span>
     </div>
     <div class="summary-row">
+      <span class="label">Jours avec frais repas</span>
+      <span class="value">{{ fee_meal_days }}</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Jours avec frais entretien</span>
+      <span class="value">{{ fee_maintenance_days }}</span>
+    </div>
+    <div class="divider"></div>
+    <div class="summary-row">
       <span class="label">Salaire mensualise</span>
       <span class="value">{{ monthly_salary_theoretical | round(2) }} €</span>
     </div>
-    <div class="divider"></div>
     <div class="summary-row">
       <span class="label">Salaire estime</span>
       <span class="value highlight">{{ salary_real_estimated | round(2) }} €</span>
