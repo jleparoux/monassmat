@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Parametres du contrat</h1>
+    <p class="page-subtitle">Met a jour les valeurs de reference du contrat.</p>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card__body">
+    {% if saved %}
+      <div class="notice notice--ok">Parametres enregistres.</div>
+    {% endif %}
+
+    <form method="post" action="/contracts/{{ contract.id }}/settings">
+      <div class="field-group">
+        <label class="field">
+          <span>Date de debut</span>
+          <input name="start_date" type="date" value="{{ contract.start_date }}" required />
+        </label>
+        <label class="field">
+          <span>Date de fin</span>
+          <input name="end_date" type="date" value="{{ contract.end_date or '' }}" />
+        </label>
+      </div>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Heures par semaine</span>
+          <input name="hours_per_week" type="number" step="0.01" value="{{ contract.hours_per_week }}" required />
+        </label>
+        <label class="field">
+          <span>Semaines par an</span>
+          <input name="weeks_per_year" type="number" step="0.01" value="{{ contract.weeks_per_year }}" required />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Tarif horaire</span>
+        <input name="hourly_rate" type="number" step="0.01" value="{{ contract.hourly_rate }}" required />
+      </label>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Jours par semaine</span>
+          <input name="days_per_week" type="number" step="1" value="{{ contract.days_per_week or '' }}" />
+        </label>
+        <label class="field">
+          <span>Seuil majoration</span>
+          <input name="majoration_threshold" type="number" step="0.01" value="{{ contract.majoration_threshold or '' }}" />
+        </label>
+      </div>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Taux majoration</span>
+          <input name="majoration_rate" type="number" step="0.01" value="{{ contract.majoration_rate or '' }}" />
+        </label>
+        <label class="field">
+          <span>Plafond salaire net</span>
+          <input name="salary_net_ceiling" type="number" step="0.01" value="{{ contract.salary_net_ceiling or '' }}" />
+        </label>
+      </div>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Frais repas</span>
+          <input name="fee_meal_amount" type="number" step="0.01" value="{{ contract.fee_meal_amount or '' }}" />
+        </label>
+        <label class="field">
+          <span>Frais entretien</span>
+          <input name="fee_maintenance_amount" type="number" step="0.01" value="{{ contract.fee_maintenance_amount or '' }}" />
+        </label>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Sauvegarder</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

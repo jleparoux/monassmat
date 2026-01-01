@@ -32,7 +32,7 @@
   function dowHeaders(container) {
     const names = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
     const row = document.createElement("div");
-    row.className = "grid";
+    row.className = "grid grid--header";
     for (const n of names) {
       const c = document.createElement("div");
       c.className = "dow";
@@ -65,6 +65,7 @@
     if (kind === "normal") return ["cell--work", "Travaille"];
     if (kind === "absence") return ["cell--absence", "Absence"];
     if (kind === "unpaid_leave") return ["cell--unpaid", "Sans solde"];
+    if (kind === "holiday") return ["cell--holiday", "Jour ferie"];
     return ["", ""];
   }
 
@@ -79,7 +80,7 @@
     dowHeaders(el);
 
     const grid = document.createElement("div");
-    grid.className = "grid";
+    grid.className = "grid grid--days";
 
     const first = startOfMonth(d);
     const last = endOfMonth(d);
@@ -151,7 +152,8 @@
       if (wd && wd.hours && wd.hours > 0) {
         const hours = document.createElement("div");
         hours.className = "cell__hours";
-        hours.textContent = `${wd.hours}h`;
+        const hoursValue = Number(wd.hours);
+        hours.textContent = `${hoursValue.toFixed(2)}h`;
         cell.appendChild(hours);
       }
 

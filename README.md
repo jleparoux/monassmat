@@ -6,3 +6,9 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - API workdays: `/api/contracts/{id}/workdays?start=YYYY-MM-DD&end=YYYY-MM-DD`
 - Formulaire jour: `/contracts/{id}/day_form?day=YYYY-MM-DD`
 - Synthese mensuelle: `/contracts/{id}/month_summary?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- Types de journee: travail, absence, conge sans solde, jour ferie
+
+## Import assmat-tracker
+- Script: `scripts/import_assmat_tracker.py`
+- Import: `--month-file` ou `--months-dir` (avec `settings.json` optionnel)
+- Jours feries: charge `holidays-YYYY.json` dans le meme dossier (ou via `--holidays-file` / `--holidays-dir`) et force le statut `ferie` lors de l'import
