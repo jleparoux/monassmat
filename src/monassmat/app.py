@@ -49,6 +49,18 @@ def time_to_str(value: time | None) -> str:
     return value.strftime("%H:%M")
 
 
+def parse_optional_float(value: str | None) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def parse_optional_int(value: str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
 def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySummaryOut:
     with session_scope() as db:
         contract = crud.get_contract(db, contract_id)
@@ -165,6 +177,69 @@ def calendar_page(contract_id: int, request: Request, initial_date: date | None 
             "title": "Calendrier",
             "contract_id": contract_id,
             "initial_date": initial_date.isoformat(),
+        },
+    )
+
+
+@app.get("/contracts/{contract_id}/settings", response_class=HTMLResponse)
+def contract_settings(contract_id: int, request: Request, db: Session = Depends(get_db)):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    return templates.TemplateResponse(
+        "contract_settings.html",
+        {
+            "request": request,
+            "title": "Parametres",
+            "contract_id": contract_id,
+            "contract": contract,
+        },
+    )
+
+
+@app.post("/contracts/{contract_id}/settings", response_class=HTMLResponse)
+def save_contract_settings(
+    contract_id: int,
+    request: Request,
+    start_date: str = Form(...),
+    end_date: str | None = Form(None),
+    hours_per_week: str = Form(...),
+    weeks_per_year: str = Form(...),
+    hourly_rate: str = Form(...),
+    days_per_week: str | None = Form(None),
+    majoration_threshold: str | None = Form(None),
+    majoration_rate: str | None = Form(None),
+    fee_meal_amount: str | None = Form(None),
+    fee_maintenance_amount: str | None = Form(None),
+    salary_net_ceiling: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    contract.start_date = date_from_iso(start_date)
+    contract.end_date = date_from_iso(end_date) if end_date else None
+    contract.hours_per_week = float(hours_per_week)
+    contract.weeks_per_year = float(weeks_per_year)
+    contract.hourly_rate = float(hourly_rate)
+    contract.days_per_week = parse_optional_int(days_per_week)
+    contract.majoration_threshold = parse_optional_float(majoration_threshold)
+    contract.majoration_rate = parse_optional_float(majoration_rate)
+    contract.fee_meal_amount = parse_optional_float(fee_meal_amount)
+    contract.fee_maintenance_amount = parse_optional_float(fee_maintenance_amount)
+    contract.salary_net_ceiling = parse_optional_float(salary_net_ceiling)
+    db.commit()
+
+    return templates.TemplateResponse(
+        "contract_settings.html",
+        {
+            "request": request,
+            "title": "Parametres",
+            "contract_id": contract_id,
+            "contract": contract,
+            "saved": True,
         },
     )
 

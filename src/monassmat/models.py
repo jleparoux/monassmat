@@ -22,6 +22,7 @@ class WorkdayKind(str, Enum):
     NORMAL = "normal"
     ABSENCE = "absence"
     UNPAID_LEAVE = "unpaid_leave"
+    HOLIDAY = "holiday"
 
 
 class PaymentKind(str, Enum):
@@ -65,6 +66,12 @@ class Contract(Base):
     hours_per_week: Mapped[float] = mapped_column(Float, nullable=False)
     weeks_per_year: Mapped[float] = mapped_column(Float, nullable=False)
     hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    days_per_week: Mapped[int | None] = mapped_column(Integer)
+    majoration_threshold: Mapped[float | None] = mapped_column(Float)
+    majoration_rate: Mapped[float | None] = mapped_column(Float)
+    fee_meal_amount: Mapped[float | None] = mapped_column(Float)
+    fee_maintenance_amount: Mapped[float | None] = mapped_column(Float)
+    salary_net_ceiling: Mapped[float | None] = mapped_column(Float)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False

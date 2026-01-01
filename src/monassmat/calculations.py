@@ -10,6 +10,7 @@ class WorkdayKind(str, Enum):
     NORMAL = "normal"
     ABSENCE = "absence"
     UNPAID_LEAVE = "unpaid_leave"
+    HOLIDAY = "holiday"
 
 
 class PaidLeaveMethod(str, Enum):
