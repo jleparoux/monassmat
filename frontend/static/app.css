@@ -106,6 +106,16 @@ a { color: inherit; }
 .dot--holiday { background: var(--holiday); }
 .dot--today { background: var(--today); }
 
+.selection-controls {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.selection-count { color: var(--muted); font-size: 12px; }
+.selection-hint { margin-top: 8px; }
+
 .calendar { padding: 16px; }
 .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .grid--days { grid-auto-rows: var(--cell-height); }
@@ -135,6 +145,11 @@ a { color: inherit; }
 .cell--unpaid { background: #fef2f2; border-left: 4px solid var(--unpaid); }
 .cell--holiday { background: #f5f3ff; border-left: 4px solid var(--holiday); }
 .cell--holiday .cell__meta { color: #6d28d9; }
+.cell--selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
 
 .daynum { font-size: 13px; font-weight: 600; }
 .cell__meta { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; }

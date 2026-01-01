@@ -1,0 +1,82 @@
+<div class="modal-form">
+  <div class="row">
+    <div class="label">Jours selectionnes</div>
+    <div class="value"><strong>{{ count }} jour{% if count > 1 %}s{% endif %}</strong></div>
+  </div>
+
+  {% if days_label %}
+    <div class="muted">{{ days_label }}</div>
+  {% endif %}
+
+  {% if saved %}
+    <div class="notice notice--ok">Mise a jour appliquee.</div>
+  {% endif %}
+
+  {% set labels = {
+    "normal": "Journee de travail",
+    "absence": "Absence",
+    "unpaid_leave": "Conge sans solde",
+    "holiday": "Jour ferie",
+    "assmat_leave": "Conge assmat"
+  } %}
+
+  <form
+    hx-post="/contracts/{{ contract_id }}/workdays/bulk"
+    hx-target="#modalContent"
+    hx-swap="innerHTML"
+  >
+    <input type="hidden" name="days" value="{{ days_value }}" />
+
+    <label class="field">
+      <span>Type de journee</span>
+      <select name="kind" required>
+        {% for k in kinds %}
+          <option value="{{ k }}">{{ labels.get(k, k) }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="field-group">
+      <label class="field">
+        <span>Heure de depose</span>
+        <input name="start_time" type="time" value="" />
+      </label>
+      <label class="field">
+        <span>Heure de reprise</span>
+        <input name="end_time" type="time" value="" />
+      </label>
+    </div>
+
+    <div class="field check-group">
+      <label class="checkbox">
+        <input name="fee_meal" type="checkbox" />
+        <span>Frais de repas</span>
+      </label>
+      <label class="checkbox">
+        <input name="fee_maintenance" type="checkbox" />
+        <span>Frais d'entretien</span>
+      </label>
+    </div>
+
+    <div class="preview">
+      <div class="preview__label">Note</div>
+      <div class="preview__value">Applique les valeurs a tous les jours selectionnes.</div>
+    </div>
+
+    <div class="actions">
+      <button
+        class="btn btn-secondary"
+        type="button"
+        hx-post="/contracts/{{ contract_id }}/workdays/bulk_delete"
+        hx-include="closest form"
+        hx-target="#modalContent"
+        hx-swap="innerHTML"
+        hx-confirm="Supprimer toutes les saisies des jours selectionnes ?"
+      >
+        Supprimer
+      </button>
+      <button class="btn btn-secondary" type="button" data-close="true">Annuler</button>
+      <button class="btn btn-primary" type="submit">Appliquer</button>
+    </div>
+  </form>
+</div>

@@ -17,6 +17,13 @@
         <button class="btn" id="nextMonth" type="button">Suivant →</button>
       </div>
 
+      <div class="selection-controls">
+        <button class="btn btn-secondary" id="toggleSelection" type="button">Selection multiple</button>
+        <button class="btn btn-primary" id="editSelection" type="button" disabled>Modifier la selection</button>
+        <button class="btn" id="clearSelection" type="button" disabled>Effacer</button>
+        <div class="selection-count" id="selectionCount">Aucun jour selectionne</div>
+      </div>
+
       <div class="legend">
         <span class="legend__item"><span class="dot dot--work"></span> travaille</span>
         <span class="legend__item"><span class="dot dot--absence"></span> absence</span>
@@ -25,6 +32,8 @@
         <span class="legend__item"><span class="dot dot--holiday"></span> jour ferie</span>
         <span class="legend__item"><span class="dot dot--today"></span> aujourd'hui</span>
       </div>
+
+      <div class="hint selection-hint">Astuce: shift + clic pour selectionner une plage.</div>
     </div>
 
     <div class="calendar" id="calendar"

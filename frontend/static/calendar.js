@@ -9,10 +9,18 @@
   const summaryPeriod = document.getElementById("summaryPeriod");
   const prevBtn = document.getElementById("prevMonth");
   const nextBtn = document.getElementById("nextMonth");
+  const toggleSelectionBtn = document.getElementById("toggleSelection");
+  const editSelectionBtn = document.getElementById("editSelection");
+  const clearSelectionBtn = document.getElementById("clearSelection");
+  const selectionCount = document.getElementById("selectionCount");
 
   const modal = document.getElementById("dayModal");
   const modalTitle = document.getElementById("modalTitle");
   const modalContent = document.getElementById("modalContent");
+
+  let selectionMode = false;
+  let selectedDays = new Set();
+  let lastSelectedDay = null;
 
   function ymd(d) {
     const yyyy = d.getFullYear();
@@ -68,6 +76,81 @@
     if (kind === "unpaid_leave") return ["cell--unpaid", "Sans solde"];
     if (kind === "holiday") return ["cell--holiday", "Jour ferie"];
     return ["", ""];
+  }
+
+  function updateSelectionUI() {
+    const count = selectedDays.size;
+    if (selectionCount) {
+      if (count === 0) {
+        selectionCount.textContent = "Aucun jour selectionne";
+      } else if (count === 1) {
+        selectionCount.textContent = "1 jour selectionne";
+      } else {
+        selectionCount.textContent = `${count} jours selectionnes`;
+      }
+    }
+
+    if (editSelectionBtn) editSelectionBtn.disabled = count === 0;
+    if (clearSelectionBtn) clearSelectionBtn.disabled = count === 0;
+    if (toggleSelectionBtn) {
+      toggleSelectionBtn.textContent = selectionMode
+        ? "Quitter la selection"
+        : "Selection multiple";
+    }
+    if (el) el.classList.toggle("calendar--selecting", selectionMode);
+  }
+
+  function applySelectionClasses() {
+    const cells = el.querySelectorAll(".cell[data-day]");
+    cells.forEach((cell) => {
+      const day = cell.dataset.day;
+      if (!day) return;
+      cell.classList.toggle("cell--selected", selectedDays.has(day));
+    });
+  }
+
+  function clearSelection() {
+    selectedDays = new Set();
+    lastSelectedDay = null;
+    applySelectionClasses();
+    updateSelectionUI();
+  }
+
+  function dateFromKey(key) {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  function isSameMonth(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+  }
+
+  function selectRange(fromKey, toKey) {
+    const from = dateFromKey(fromKey);
+    const to = dateFromKey(toKey);
+    if (!isSameMonth(from, current) || !isSameMonth(to, current)) {
+      selectedDays.add(toKey);
+      return;
+    }
+
+    const start = from <= to ? from : to;
+    const end = from <= to ? to : from;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      selectedDays.add(ymd(d));
+    }
+  }
+
+  function toggleSelection(dayKey, useRange) {
+    if (useRange && lastSelectedDay) {
+      selectRange(lastSelectedDay, dayKey);
+    } else if (selectedDays.has(dayKey)) {
+      selectedDays.delete(dayKey);
+    } else {
+      selectedDays.add(dayKey);
+    }
+    lastSelectedDay = dayKey;
+    applySelectionClasses();
+    updateSelectionUI();
   }
 
   function render(d, workdaysByDate) {
@@ -158,7 +241,16 @@
         cell.appendChild(hours);
       }
 
-      cell.addEventListener("click", () => openDay(key));
+      cell.addEventListener("click", (event) => {
+        if (selectionMode) {
+          toggleSelection(key, event.shiftKey);
+          return;
+        }
+        openDay(key);
+      });
+      if (selectedDays.has(key)) {
+        cell.classList.add("cell--selected");
+      }
       grid.appendChild(cell);
     }
 
@@ -238,6 +330,36 @@
     }
   }
 
+  async function openBulkForm() {
+    const days = Array.from(selectedDays).sort();
+    if (days.length === 0) return;
+    const query = encodeURIComponent(days.join(","));
+    const url = `/contracts/${contractId}/bulk_form?days=${query}`;
+
+    if (modalTitle) {
+      modalTitle.textContent = `Selection (${days.length} jours)`;
+    }
+    if (modalContent) {
+      modalContent.innerHTML = '<div class="empty">Chargement…</div>';
+    }
+    openModal();
+
+    if (window.htmx && typeof window.htmx.ajax === "function") {
+      window.htmx.ajax("GET", url, { target: "#modalContent", swap: "innerHTML" });
+      return;
+    }
+
+    try {
+      const html = await fetchHtml(url);
+      if (modalContent) modalContent.innerHTML = html;
+    } catch (err) {
+      if (modalContent) {
+        modalContent.innerHTML = '<div class="empty">Impossible de charger la selection.</div>';
+      }
+      console.error(err);
+    }
+  }
+
   function showSummaryError() {
     const target = document.getElementById("monthSummary");
     if (target) {
@@ -271,16 +393,36 @@
     const byDate = new Map(payload.items.map(x => [x.date, x]));
     render(current, byDate);
     refreshSummary();
+    applySelectionClasses();
+    updateSelectionUI();
   }
 
   prevBtn?.addEventListener("click", async () => {
     current = new Date(current.getFullYear(), current.getMonth() - 1, 1);
+    clearSelection();
     await refresh();
   });
 
   nextBtn?.addEventListener("click", async () => {
     current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+    clearSelection();
     await refresh();
+  });
+
+  toggleSelectionBtn?.addEventListener("click", () => {
+    selectionMode = !selectionMode;
+    if (!selectionMode) {
+      clearSelection();
+    }
+    updateSelectionUI();
+  });
+
+  clearSelectionBtn?.addEventListener("click", () => {
+    clearSelection();
+  });
+
+  editSelectionBtn?.addEventListener("click", () => {
+    openBulkForm();
   });
 
   modal?.addEventListener("click", (event) => {
@@ -314,8 +456,11 @@
 
   document.body.addEventListener("workday:changed", async () => {
     closeModal();
+    selectionMode = false;
+    clearSelection();
     await refresh();
   });
 
   refresh().catch(console.error);
+  updateSelectionUI();
 })();

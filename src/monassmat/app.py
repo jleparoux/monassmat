@@ -60,6 +60,22 @@ def parse_optional_int(value: str | None) -> int | None:
         return None
     return int(value)
 
+def parse_days_list(value: str) -> list[date]:
+    if not value:
+        raise HTTPException(status_code=400, detail="Missing days")
+    items: list[date] = []
+    for raw in value.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            items.append(date_from_iso(raw))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid day format") from exc
+    if not items:
+        raise HTTPException(status_code=400, detail="No valid days provided")
+    return items
+
 
 def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySummaryOut:
     with session_scope() as db:
@@ -269,6 +285,30 @@ def day_form(contract_id: int, day: date, request: Request, db: Session = Depend
     )
 
 
+@app.get("/contracts/{contract_id}/bulk_form", response_class=HTMLResponse)
+def bulk_form(contract_id: int, days: str, request: Request):
+    day_list = sorted(parse_days_list(days))
+    count = len(day_list)
+    days_value = ",".join(d.isoformat() for d in day_list)
+    if count <= 6:
+        days_label = ", ".join(d.isoformat() for d in day_list)
+    else:
+        days_label = f"{day_list[0].isoformat()} ... {day_list[-1].isoformat()}"
+
+    return templates.TemplateResponse(
+        "partials/bulk_form.html",
+        {
+            "request": request,
+            "contract_id": contract_id,
+            "count": count,
+            "days_label": days_label,
+            "days_value": days_value,
+            "kinds": [k.value for k in WorkdayKind],
+            "saved": False,
+        },
+    )
+
+
 @app.get("/contracts/{contract_id}/month_summary", response_class=HTMLResponse)
 def month_summary(
     contract_id: int,
@@ -353,6 +393,109 @@ def save_workday(
         saved=True,
         deleted=False,
         has_entry=True,
+    )
+
+    resp = HTMLResponse(html)
+    resp.headers["HX-Trigger"] = "workday:changed"
+    return resp
+
+
+@app.post("/contracts/{contract_id}/workdays/bulk", response_class=HTMLResponse)
+def save_workdays_bulk(
+    contract_id: int,
+    request: Request,
+    days: str = Form(...),
+    kind: str = Form(...),
+    start_time: str | None = Form(None),
+    end_time: str | None = Form(None),
+    fee_meal: bool = Form(False),
+    fee_maintenance: bool = Form(False),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    day_list = sorted(parse_days_list(days))
+    kind_enum = WorkdayKind(kind)
+
+    start_value = parse_time(start_time, "start_time")
+    end_value = parse_time(end_time, "end_time")
+
+    if kind_enum == WorkdayKind.NORMAL:
+        if not start_value or not end_value:
+            raise HTTPException(status_code=400, detail="Start and end times required")
+        hours = hours_between_times(start_value, end_value)
+    else:
+        hours = 0.0
+        start_value = None
+        end_value = None
+
+    for day in day_list:
+        crud.upsert_workday(
+            db,
+            contract_id=contract_id,
+            day=day,
+            hours=hours,
+            kind=kind_enum,
+            start_time=start_value,
+            end_time=end_value,
+            fee_meal=fee_meal,
+            fee_maintenance=fee_maintenance,
+        )
+    db.commit()
+
+    if len(day_list) <= 6:
+        days_label = ", ".join(d.isoformat() for d in day_list)
+    else:
+        days_label = f"{day_list[0].isoformat()} ... {day_list[-1].isoformat()}"
+
+    html = templates.get_template("partials/bulk_form.html").render(
+        request=request,
+        contract_id=contract_id,
+        count=len(day_list),
+        days_label=days_label,
+        days_value=",".join(d.isoformat() for d in day_list),
+        kinds=[k.value for k in WorkdayKind],
+        saved=True,
+    )
+
+    resp = HTMLResponse(html)
+    resp.headers["HX-Trigger"] = "workday:changed"
+    return resp
+
+
+@app.post("/contracts/{contract_id}/workdays/bulk_delete", response_class=HTMLResponse)
+def delete_workdays_bulk(
+    contract_id: int,
+    request: Request,
+    days: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    day_list = sorted(parse_days_list(days))
+    deleted_any = False
+    for day in day_list:
+        deleted = crud.delete_workday(db, contract_id=contract_id, day=day)
+        deleted_any = deleted_any or deleted
+    db.commit()
+
+    if len(day_list) <= 6:
+        days_label = ", ".join(d.isoformat() for d in day_list)
+    else:
+        days_label = f"{day_list[0].isoformat()} ... {day_list[-1].isoformat()}"
+
+    html = templates.get_template("partials/bulk_form.html").render(
+        request=request,
+        contract_id=contract_id,
+        count=len(day_list),
+        days_label=days_label,
+        days_value=",".join(d.isoformat() for d in day_list),
+        kinds=[k.value for k in WorkdayKind],
+        saved=deleted_any,
     )
 
     resp = HTMLResponse(html)
