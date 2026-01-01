@@ -9,6 +9,16 @@
   const summaryPeriod = document.getElementById("summaryPeriod");
   const prevBtn = document.getElementById("prevMonth");
   const nextBtn = document.getElementById("nextMonth");
+  const monthPicker = document.getElementById("monthPicker");
+  const monthPickerButton = document.getElementById("monthPickerButton");
+  const monthPickerPanel = document.getElementById("monthPickerPanel");
+  const monthPickerLabel = document.getElementById("monthPickerLabel");
+  const monthPickerPrevYear = document.getElementById("monthPickerPrevYear");
+  const monthPickerNextYear = document.getElementById("monthPickerNextYear");
+  const monthPickerYearLabel = document.getElementById("monthPickerYearLabel");
+  const monthPickerYears = document.getElementById("monthPickerYears");
+  const monthPickerMonths = document.getElementById("monthPickerMonths");
+  const monthPickerToday = document.getElementById("monthPickerToday");
   const toggleSelectionBtn = document.getElementById("toggleSelection");
   const editSelectionBtn = document.getElementById("editSelection");
   const clearSelectionBtn = document.getElementById("clearSelection");
@@ -21,6 +31,23 @@
   let selectionMode = false;
   let selectedDays = new Set();
   let lastSelectedDay = null;
+  const MONTH_NAMES = [
+    "Janvier",
+    "Fevrier",
+    "Mars",
+    "Avril",
+    "Mai",
+    "Juin",
+    "Juillet",
+    "Aout",
+    "Septembre",
+    "Octobre",
+    "Novembre",
+    "Decembre",
+  ];
+  let pickerYear = current.getFullYear();
+  let pickerRangeStart = 2020;
+  let pickerMode = "months";
 
   function ymd(d) {
     const yyyy = d.getFullYear();
@@ -76,6 +103,97 @@
     if (kind === "unpaid_leave") return ["cell--unpaid", "Sans solde"];
     if (kind === "holiday") return ["cell--holiday", "Jour ferie"];
     return ["", ""];
+  }
+
+  function updateMonthPickerLabel() {
+    if (!monthPickerLabel) return;
+    const label = `${MONTH_NAMES[current.getMonth()]} ${current.getFullYear()}`;
+    monthPickerLabel.textContent = label;
+  }
+
+  function updateYearHeader() {
+    if (!monthPickerYearLabel) return;
+    monthPickerYearLabel.textContent = String(pickerYear);
+  }
+
+  function setPickerMode(mode) {
+    pickerMode = mode;
+    if (monthPickerPanel) {
+      monthPickerPanel.dataset.mode = mode;
+    }
+  }
+
+  function buildYearButtons() {
+    if (!monthPickerYears) return;
+    monthPickerYears.innerHTML = "";
+    for (let year = pickerRangeStart; year <= pickerRangeStart + 9; year++) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "month-picker__year";
+      btn.textContent = String(year);
+      btn.dataset.year = String(year);
+      if (year === pickerYear) btn.classList.add("is-active");
+      btn.addEventListener("click", () => {
+        pickerYear = year;
+        updateYearSelection();
+        updateMonthButtons();
+        updateYearHeader();
+        setPickerMode("months");
+      });
+      monthPickerYears.appendChild(btn);
+    }
+  }
+
+  function updateYearSelection() {
+    if (!monthPickerYears) return;
+    monthPickerYears.querySelectorAll(".month-picker__year").forEach((btn) => {
+      const year = Number(btn.dataset.year);
+      btn.classList.toggle("is-active", year === pickerYear);
+    });
+  }
+
+  function updateMonthButtons() {
+    if (!monthPickerMonths) return;
+    monthPickerMonths.innerHTML = "";
+    MONTH_NAMES.forEach((name, index) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "month-picker__month";
+      btn.textContent = name;
+      btn.dataset.month = String(index);
+      if (pickerYear === current.getFullYear() && index === current.getMonth()) {
+        btn.classList.add("is-active");
+      }
+      btn.addEventListener("click", async () => {
+        current = new Date(pickerYear, index, 1);
+        clearSelection();
+        closeMonthPicker();
+        await refresh();
+      });
+      monthPickerMonths.appendChild(btn);
+    });
+  }
+
+  function openMonthPicker() {
+    if (!monthPickerPanel || !monthPickerButton) return;
+    monthPickerPanel.classList.add("is-open");
+    monthPickerButton.setAttribute("aria-expanded", "true");
+  }
+
+  function closeMonthPicker() {
+    if (!monthPickerPanel || !monthPickerButton) return;
+    monthPickerPanel.classList.remove("is-open");
+    monthPickerButton.setAttribute("aria-expanded", "false");
+  }
+
+  function initMonthPicker() {
+    pickerYear = current.getFullYear();
+    pickerRangeStart = 2020;
+    buildYearButtons();
+    updateMonthButtons();
+    updateMonthPickerLabel();
+    updateYearHeader();
+    setPickerMode("months");
   }
 
   function updateSelectionUI() {
@@ -158,7 +276,7 @@
 
     const m = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
     const label = m.charAt(0).toUpperCase() + m.slice(1);
-    monthTitle.textContent = label;
+    if (monthTitle) monthTitle.textContent = label;
     if (summaryPeriod) summaryPeriod.textContent = label;
 
     dowHeaders(el);
@@ -395,6 +513,10 @@
     refreshSummary();
     applySelectionClasses();
     updateSelectionUI();
+    updateMonthPickerLabel();
+    updateMonthButtons();
+    updateYearSelection();
+    updateYearHeader();
   }
 
   prevBtn?.addEventListener("click", async () => {
@@ -405,6 +527,60 @@
 
   nextBtn?.addEventListener("click", async () => {
     current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+    clearSelection();
+    await refresh();
+  });
+
+  monthPickerButton?.addEventListener("click", () => {
+    if (!monthPickerPanel) return;
+    const isOpen = monthPickerPanel.classList.contains("is-open");
+    if (isOpen) {
+      closeMonthPicker();
+    } else {
+      setPickerMode("months");
+      openMonthPicker();
+    }
+  });
+
+  monthPickerToday?.addEventListener("click", async () => {
+    const now = new Date();
+    pickerYear = now.getFullYear();
+    if (now.getFullYear() < pickerRangeStart || now.getFullYear() > pickerRangeStart + 9) {
+      pickerRangeStart = now.getFullYear() - (now.getFullYear() % 10);
+      buildYearButtons();
+    }
+    updateYearSelection();
+    updateYearHeader();
+    current = new Date(now.getFullYear(), now.getMonth(), 1);
+    clearSelection();
+    closeMonthPicker();
+    await refresh();
+  });
+
+  monthPickerYearLabel?.addEventListener("click", () => {
+    setPickerMode("years");
+  });
+
+  monthPickerPrevYear?.addEventListener("click", async () => {
+    if (pickerMode === "years") {
+      pickerRangeStart -= 10;
+      buildYearButtons();
+      return;
+    }
+    pickerYear -= 1;
+    current = new Date(pickerYear, current.getMonth(), 1);
+    clearSelection();
+    await refresh();
+  });
+
+  monthPickerNextYear?.addEventListener("click", async () => {
+    if (pickerMode === "years") {
+      pickerRangeStart += 10;
+      buildYearButtons();
+      return;
+    }
+    pickerYear += 1;
+    current = new Date(pickerYear, current.getMonth(), 1);
     clearSelection();
     await refresh();
   });
@@ -454,6 +630,14 @@
     if (event.key === "Escape") closeModal();
   });
 
+  document.addEventListener("click", (event) => {
+    if (!monthPicker || !monthPickerPanel || !monthPickerButton) return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (monthPicker.contains(target)) return;
+    closeMonthPicker();
+  });
+
   document.body.addEventListener("workday:changed", async () => {
     closeModal();
     selectionMode = false;
@@ -463,4 +647,5 @@
 
   refresh().catch(console.error);
   updateSelectionUI();
+  initMonthPicker();
 })();

@@ -13,7 +13,21 @@
     <div class="card__header">
       <div class="toolbar">
         <button class="btn" id="prevMonth" type="button">← Precedent</button>
-        <div class="title" id="monthTitle">—</div>
+        <div class="month-picker month-picker--inline" id="monthPicker">
+          <button class="month-picker__button" id="monthPickerButton" type="button" aria-haspopup="true" aria-expanded="false">
+            <span id="monthPickerLabel">—</span>
+          </button>
+          <div class="month-picker__panel" id="monthPickerPanel" role="dialog" aria-label="Choisir un mois">
+            <div class="month-picker__header">
+              <button class="month-picker__nav" id="monthPickerPrevYear" type="button" aria-label="Annees precedentes">←</button>
+              <button class="month-picker__year-label" id="monthPickerYearLabel" type="button" aria-label="Choisir une annee">—</button>
+              <button class="month-picker__nav" id="monthPickerNextYear" type="button" aria-label="Annees suivantes">→</button>
+            </div>
+            <div class="month-picker__years" id="monthPickerYears"></div>
+            <div class="month-picker__months" id="monthPickerMonths"></div>
+            <button class="month-picker__today" id="monthPickerToday" type="button">Mois en cours</button>
+          </div>
+        </div>
         <button class="btn" id="nextMonth" type="button">Suivant →</button>
       </div>
 
