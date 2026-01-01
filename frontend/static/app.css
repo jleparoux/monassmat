@@ -9,6 +9,7 @@
   --absence: #f97316;
   --unpaid: #ef4444;
   --holiday: #8b5cf6;
+  --assmat: #f59e0b;
   --today: #93c5fd;
   --cell-height: 110px;
 }
@@ -100,6 +101,7 @@ a { color: inherit; }
 .dot { width: 10px; height: 10px; display: inline-block; border-radius: 50%; }
 .dot--work { background: var(--work); }
 .dot--absence { background: var(--absence); }
+.dot--assmat { background: var(--assmat); }
 .dot--unpaid { background: var(--unpaid); }
 .dot--holiday { background: var(--holiday); }
 .dot--today { background: var(--today); }
@@ -129,6 +131,7 @@ a { color: inherit; }
 .cell--weekend { background: #f1f5f9; color: #94a3b8; }
 .cell--work { background: #ecfdf5; border-left: 4px solid var(--work); }
 .cell--absence { background: #fff7ed; border-left: 4px solid var(--absence); }
+.cell--assmat { background: #fffbeb; border-left: 4px solid var(--assmat); }
 .cell--unpaid { background: #fef2f2; border-left: 4px solid var(--unpaid); }
 .cell--holiday { background: #f5f3ff; border-left: 4px solid var(--holiday); }
 .cell--holiday .cell__meta { color: #6d28d9; }

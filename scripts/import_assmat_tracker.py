@@ -15,7 +15,7 @@ from monassmat.models import WorkdayKind
 STATUS_MAP = {
     "travail": WorkdayKind.NORMAL,
     "conge-sans-solde": WorkdayKind.UNPAID_LEAVE,
-    "conge-assmat": WorkdayKind.ABSENCE,
+    "conge-assmat": WorkdayKind.ASSMAT_LEAVE,
     "conge-parent": WorkdayKind.ABSENCE,
     "ferie": WorkdayKind.HOLIDAY,
 }

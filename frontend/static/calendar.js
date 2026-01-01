@@ -64,6 +64,7 @@
   function kindBadge(kind) {
     if (kind === "normal") return ["cell--work", "Travaille"];
     if (kind === "absence") return ["cell--absence", "Absence"];
+    if (kind === "assmat_leave") return ["cell--assmat", "Conge assmat"];
     if (kind === "unpaid_leave") return ["cell--unpaid", "Sans solde"];
     if (kind === "holiday") return ["cell--holiday", "Jour ferie"];
     return ["", ""];

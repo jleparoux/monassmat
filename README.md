@@ -12,3 +12,4 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Script: `scripts/import_assmat_tracker.py`
 - Import: `--month-file` ou `--months-dir` (avec `settings.json` optionnel)
 - Jours feries: charge `holidays-YYYY.json` dans le meme dossier (ou via `--holidays-file` / `--holidays-dir`) et force le statut `ferie` lors de l'import
+ - Statuts importes: travail, conge assmat, conge parent (absence), conge sans solde, ferie
