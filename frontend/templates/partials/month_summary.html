@@ -6,16 +6,46 @@
       <span class="value">{{ monthly_hours_theoretical | round(2) }} h</span>
     </div>
     <div class="summary-row">
-      <span class="label">Heures reelles</span>
+      <span class="label">Heures travaillees</span>
       <span class="value">{{ hours_real | round(2) }} h</span>
     </div>
     <div class="summary-row">
-      <span class="label">Jours avec frais repas</span>
-      <span class="value">{{ fee_meal_days }}</span>
+      <span class="label">Heures majorees</span>
+      <span class="value">{{ hours_majorated | round(2) }} h</span>
     </div>
     <div class="summary-row">
-      <span class="label">Jours avec frais entretien</span>
-      <span class="value">{{ fee_maintenance_days }}</span>
+      <span class="label">Ecart heures</span>
+      <span class="value">{{ hours_delta | round(2) }} h</span>
+    </div>
+    <div class="divider"></div>
+    <div class="summary-row">
+      <span class="label">Jours travailles</span>
+      <span class="value">{{ work_days }}</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Absences</span>
+      <span class="value">{{ absence_days }}</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Conges assmat</span>
+      <span class="value">{{ assmat_leave_days }}</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Sans solde</span>
+      <span class="value">{{ unpaid_leave_days }}</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Jours feries</span>
+      <span class="value">{{ holiday_days }}</span>
+    </div>
+    <div class="divider"></div>
+    <div class="summary-row">
+      <span class="label">Frais repas</span>
+      <span class="value">{{ fee_meal_days }} j / {{ fee_meal_total | round(2) }} €</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Frais entretien</span>
+      <span class="value">{{ fee_maintenance_days }} j / {{ fee_maintenance_total | round(2) }} €</span>
     </div>
     <div class="divider"></div>
     <div class="summary-row">
@@ -23,8 +53,20 @@
       <span class="value">{{ monthly_salary_theoretical | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Salaire estime</span>
-      <span class="value highlight">{{ salary_real_estimated | round(2) }} €</span>
+      <span class="label">Salaire heures reelles</span>
+      <span class="value">{{ salary_base | round(2) }} €</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Majoration</span>
+      <span class="value">{{ salary_majoration | round(2) }} €</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Deduction sans solde</span>
+      <span class="value">-{{ unpaid_leave_deduction | round(2) }} €</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Total estime</span>
+      <span class="value highlight">{{ total_estimated | round(2) }} €</span>
     </div>
   </div>
 </div>

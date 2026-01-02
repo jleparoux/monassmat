@@ -111,6 +111,7 @@
     monthPickerLabel.textContent = label;
   }
 
+
   function updateYearHeader() {
     if (!monthPickerYearLabel) return;
     monthPickerYearLabel.textContent = String(pickerYear);
@@ -485,6 +486,7 @@
     }
   }
 
+
   function refreshSummary() {
     const start = startOfMonth(current);
     const end = endOfMonth(current);
@@ -500,6 +502,7 @@
         showSummaryError();
       });
   }
+
 
   async function refresh() {
     let payload = { items: [] };
@@ -530,6 +533,7 @@
     clearSelection();
     await refresh();
   });
+
 
   monthPickerButton?.addEventListener("click", () => {
     if (!monthPickerPanel) return;

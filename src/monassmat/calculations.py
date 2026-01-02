@@ -41,6 +41,16 @@ class Period:
     end: date    # inclusive
 
 
+@dataclass(frozen=True)
+class WorkdayTotals:
+    total_hours: float
+    normal_hours: float
+    majorated_hours: float
+    base_salary: float
+    majoration_salary: float
+    total_salary: float
+
+
 def _assert_positive(name: str, value: float) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be > 0 (got {value})")
@@ -103,6 +113,88 @@ def value_hours(hours: float, hourly_rate: float) -> float:
         raise ValueError("hours must be >= 0")
     _assert_positive("hourly_rate", hourly_rate)
     return hours * hourly_rate
+
+
+def workday_totals(
+    workdays: Iterable[WorkdayFacts],
+    *,
+    hourly_rate: float,
+    majoration_threshold: float | None = None,
+    majoration_rate: float | None = None,
+    include_kinds: set[WorkdayKind] | None = None,
+) -> WorkdayTotals:
+    if include_kinds is None:
+        include_kinds = {WorkdayKind.NORMAL}
+
+    _assert_positive("hourly_rate", hourly_rate)
+    apply_majoration = (
+        majoration_threshold is not None and majoration_rate is not None
+    )
+
+    total_hours = 0.0
+    normal_hours = 0.0
+    majorated_hours = 0.0
+    base_salary = 0.0
+    majoration_salary = 0.0
+
+    for wd in workdays:
+        if wd.kind not in include_kinds:
+            continue
+        if wd.hours < 0:
+            raise ValueError(f"Workday hours must be >= 0 (got {wd.hours})")
+
+        hours = wd.hours
+        total_hours += hours
+
+        if apply_majoration and majoration_threshold is not None:
+            if hours <= majoration_threshold:
+                normal = hours
+                majorated = 0.0
+            else:
+                normal = majoration_threshold
+                majorated = hours - majoration_threshold
+        else:
+            normal = hours
+            majorated = 0.0
+
+        normal_hours += normal
+        majorated_hours += majorated
+        base_salary += normal * hourly_rate
+        if apply_majoration and majoration_rate is not None:
+            majoration_salary += majorated * hourly_rate * majoration_rate
+
+    total_salary = base_salary + majoration_salary
+    return WorkdayTotals(
+        total_hours=total_hours,
+        normal_hours=normal_hours,
+        majorated_hours=majorated_hours,
+        base_salary=base_salary,
+        majoration_salary=majoration_salary,
+        total_salary=total_salary,
+    )
+
+
+def contract_daily_hours(hours_per_week: float, days_per_week: int | None) -> float | None:
+    if days_per_week is None or days_per_week <= 0:
+        return None
+    _assert_positive("hours_per_week", hours_per_week)
+    return hours_per_week / days_per_week
+
+
+def unpaid_leave_deduction(
+    unpaid_leave_days: int,
+    *,
+    hours_per_week: float,
+    days_per_week: int | None,
+    hourly_rate: float,
+) -> float:
+    if unpaid_leave_days <= 0:
+        return 0.0
+    daily_hours = contract_daily_hours(hours_per_week, days_per_week)
+    if daily_hours is None:
+        return 0.0
+    _assert_positive("hourly_rate", hourly_rate)
+    return unpaid_leave_days * daily_hours * hourly_rate
 
 
 # ---------------------------------------------------------------------------

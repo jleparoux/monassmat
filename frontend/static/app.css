@@ -305,6 +305,21 @@ a { color: inherit; }
 .summary-row .value { font-weight: 600; }
 .summary-row .highlight { color: #16a34a; }
 .divider { height: 1px; background: #e2e8f0; margin: 6px 0; }
+.summary-table { display: grid; gap: 6px; font-size: 12px; }
+.summary-table__row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 0.8fr;
+  gap: 8px;
+  align-items: center;
+}
+.summary-table__row span:nth-child(2),
+.summary-table__row span:nth-child(3) { text-align: right; }
+.summary-table__header {
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  font-weight: 600;
+}
 
 .field { display: grid; gap: 6px; margin: 10px 0; }
 .field span { font-size: 12px; color: var(--muted); }

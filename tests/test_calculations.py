@@ -1,11 +1,19 @@
 from datetime import date
 
 import pytest
-from monassmat.calculations import (ContractFacts, PaidLeaveMethod, Period,
-                                    WorkdayFacts, WorkdayKind,
-                                    contract_monthly_hours,
-                                    contract_monthly_salary, hours_in_period,
-                                    paid_leave_value)
+from monassmat.calculations import (
+    ContractFacts,
+    PaidLeaveMethod,
+    Period,
+    WorkdayFacts,
+    WorkdayKind,
+    contract_monthly_hours,
+    contract_monthly_salary,
+    hours_in_period,
+    paid_leave_value,
+    unpaid_leave_deduction,
+    workday_totals,
+)
 
 
 def test_contract_monthly_hours():
@@ -58,3 +66,66 @@ def test_paid_leave_value_dixieme_requires_amount():
             daily_reference_hours=8.0,
             hourly_rate=5.0,
         )
+
+
+def test_workday_totals_with_majoration():
+    wds = [
+        WorkdayFacts(day=date(2025, 2, 1), hours=10.0, kind=WorkdayKind.NORMAL),
+        WorkdayFacts(day=date(2025, 2, 2), hours=6.0, kind=WorkdayKind.NORMAL),
+    ]
+    totals = workday_totals(
+        wds,
+        hourly_rate=5.0,
+        majoration_threshold=8.0,
+        majoration_rate=1.25,
+    )
+    assert totals.total_hours == 16.0
+    assert totals.normal_hours == 14.0
+    assert totals.majorated_hours == 2.0
+    assert totals.base_salary == 14.0 * 5.0
+    assert totals.majoration_salary == 2.0 * 5.0 * 1.25
+    assert totals.total_salary == totals.base_salary + totals.majoration_salary
+
+
+def test_unpaid_leave_deduction_without_days_per_week():
+    assert unpaid_leave_deduction(
+        2, hours_per_week=40.0, days_per_week=None, hourly_rate=5.0
+    ) == 0.0
+
+
+def test_unpaid_leave_deduction_with_days_per_week():
+    assert unpaid_leave_deduction(
+        2, hours_per_week=40.0, days_per_week=5, hourly_rate=5.0
+    ) == 2 * 8.0 * 5.0
+
+
+def test_workday_totals_without_majoration():
+    wds = [
+        WorkdayFacts(day=date(2025, 3, 1), hours=7.5, kind=WorkdayKind.NORMAL),
+        WorkdayFacts(day=date(2025, 3, 2), hours=0.0, kind=WorkdayKind.NORMAL),
+    ]
+    totals = workday_totals(wds, hourly_rate=4.0)
+    assert totals.total_hours == 7.5
+    assert totals.normal_hours == 7.5
+    assert totals.majorated_hours == 0.0
+    assert totals.base_salary == 7.5 * 4.0
+    assert totals.majoration_salary == 0.0
+    assert totals.total_salary == totals.base_salary
+
+
+def test_workday_totals_filters_kinds():
+    wds = [
+        WorkdayFacts(day=date(2025, 4, 1), hours=6.0, kind=WorkdayKind.NORMAL),
+        WorkdayFacts(day=date(2025, 4, 2), hours=6.0, kind=WorkdayKind.ABSENCE),
+    ]
+    totals = workday_totals(
+        wds, hourly_rate=4.0, include_kinds={WorkdayKind.NORMAL}
+    )
+    assert totals.total_hours == 6.0
+    assert totals.base_salary == 6.0 * 4.0
+
+
+def test_unpaid_leave_deduction_zero_days():
+    assert unpaid_leave_deduction(
+        0, hours_per_week=40.0, days_per_week=5, hourly_rate=5.0
+    ) == 0.0

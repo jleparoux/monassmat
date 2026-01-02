@@ -6,6 +6,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - API workdays: `/api/contracts/{id}/workdays?start=YYYY-MM-DD&end=YYYY-MM-DD`
 - Formulaire jour: `/contracts/{id}/day_form?day=YYYY-MM-DD`
 - Synthese mensuelle: `/contracts/{id}/month_summary?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- Synthese annuelle: `/contracts/{id}/year_summary?year=YYYY`
 - Types de journee: travail, absence, conge sans solde, jour ferie
 
 ## Import assmat-tracker

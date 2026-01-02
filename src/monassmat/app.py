@@ -11,14 +11,14 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from . import crud
-from .calculations import ContractFacts, Period, WorkdayFacts
+from .calculations import ContractFacts, WorkdayFacts
 from .calculations import WorkdayKind as CalcWorkdayKind
 from .calculations import (
     contract_monthly_hours,
     contract_monthly_salary,
     hours_between_times,
-    hours_in_period,
-    value_hours,
+    unpaid_leave_deduction,
+    workday_totals,
 )
 from .db import get_db, session_scope
 from .models import WorkdayKind
@@ -32,6 +32,20 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="stati
 templates = Jinja2Templates(directory=str(FRONTEND_DIR / "templates"))
 
 date_from_iso = date.fromisoformat
+MONTH_NAMES = [
+    "Janvier",
+    "Fevrier",
+    "Mars",
+    "Avril",
+    "Mai",
+    "Juin",
+    "Juillet",
+    "Aout",
+    "Septembre",
+    "Octobre",
+    "Novembre",
+    "Decembre",
+]
 
 
 def parse_time(value: str | None, field_name: str) -> time | None:
@@ -60,6 +74,7 @@ def parse_optional_int(value: str | None) -> int | None:
         return None
     return int(value)
 
+
 def parse_days_list(value: str) -> list[date]:
     if not value:
         raise HTTPException(status_code=400, detail="Missing days")
@@ -77,49 +92,98 @@ def parse_days_list(value: str) -> list[date]:
     return items
 
 
-def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySummaryOut:
-    with session_scope() as db:
-        contract = crud.get_contract(db, contract_id)
-        if not contract:
-            raise HTTPException(status_code=404, detail="Contract not found")
-
-        cf = ContractFacts(
-            start_date=contract.start_date,
-            end_date=contract.end_date,
-            hours_per_week=contract.hours_per_week,
-            weeks_per_year=contract.weeks_per_year,
-            hourly_rate=contract.hourly_rate,
+def summarize_period(
+    contract,
+    workdays,
+    *,
+    start: date,
+    end: date,
+) -> MonthlySummaryOut:
+    cf = ContractFacts(
+        start_date=contract.start_date,
+        end_date=contract.end_date,
+        hours_per_week=contract.hours_per_week,
+        weeks_per_year=contract.weeks_per_year,
+        hourly_rate=contract.hourly_rate,
+    )
+    wd_facts = [
+        WorkdayFacts(
+            day=wd.date,
+            hours=wd.hours,
+            kind=CalcWorkdayKind(wd.kind.value),
         )
-        wds = crud.list_workdays(db, contract_id, start, end)
-        wd_facts = [
-            WorkdayFacts(
-                day=wd.date,
-                hours=wd.hours,
-                kind=CalcWorkdayKind(wd.kind.value),
-            )
-            for wd in wds
-        ]
-        fee_meal_days = sum(1 for wd in wds if wd.fee_meal)
-        fee_maintenance_days = sum(1 for wd in wds if wd.fee_maintenance)
+        for wd in workdays
+    ]
 
-    period = Period(start=start, end=end)
+    totals = workday_totals(
+        wd_facts,
+        hourly_rate=contract.hourly_rate,
+        majoration_threshold=contract.majoration_threshold,
+        majoration_rate=contract.majoration_rate,
+    )
+
+    work_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.NORMAL)
+    absence_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.ABSENCE)
+    unpaid_leave_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.UNPAID_LEAVE)
+    assmat_leave_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE)
+    holiday_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.HOLIDAY)
+
+    fee_meal_days = sum(1 for wd in workdays if wd.fee_meal)
+    fee_maintenance_days = sum(1 for wd in workdays if wd.fee_maintenance)
+    fee_meal_total = (contract.fee_meal_amount or 0.0) * fee_meal_days
+    fee_maintenance_total = (contract.fee_maintenance_amount or 0.0) * fee_maintenance_days
 
     theo_hours = contract_monthly_hours(cf)
     theo_salary = contract_monthly_salary(cf)
+    hours_delta = totals.total_hours - theo_hours
 
-    real_hours = hours_in_period(wd_facts, period)
-    real_salary_est = value_hours(real_hours, cf.hourly_rate)
+    unpaid_deduction = unpaid_leave_deduction(
+        unpaid_leave_days,
+        hours_per_week=contract.hours_per_week,
+        days_per_week=contract.days_per_week,
+        hourly_rate=contract.hourly_rate,
+    )
+
+    total_estimated = (
+        totals.total_salary + fee_meal_total + fee_maintenance_total - unpaid_deduction
+    )
+    average_hours = totals.total_hours / work_days if work_days else 0.0
 
     return MonthlySummaryOut(
         period_start=start,
         period_end=end,
         monthly_hours_theoretical=theo_hours,
         monthly_salary_theoretical=theo_salary,
-        hours_real=real_hours,
-        salary_real_estimated=real_salary_est,
+        hours_real=totals.total_hours,
+        hours_normal=totals.normal_hours,
+        hours_majorated=totals.majorated_hours,
+        hours_delta=hours_delta,
+        work_days=work_days,
+        absence_days=absence_days,
+        unpaid_leave_days=unpaid_leave_days,
+        assmat_leave_days=assmat_leave_days,
+        holiday_days=holiday_days,
+        salary_base=totals.base_salary,
+        salary_majoration=totals.majoration_salary,
+        salary_real_estimated=totals.total_salary,
         fee_meal_days=fee_meal_days,
         fee_maintenance_days=fee_maintenance_days,
+        fee_meal_total=fee_meal_total,
+        fee_maintenance_total=fee_maintenance_total,
+        unpaid_leave_deduction=unpaid_deduction,
+        total_estimated=total_estimated,
+        average_hours_per_day=average_hours,
     )
+
+
+def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySummaryOut:
+    with session_scope() as db:
+        contract = crud.get_contract(db, contract_id)
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
+
+        workdays = crud.list_workdays(db, contract_id, start, end)
+        return summarize_period(contract, workdays, start=start, end=end)
 
 
 @app.get("/health")
@@ -172,6 +236,10 @@ def month_bounds(d: date) -> tuple[date, date]:
     return date(d.year, d.month, 1), date(d.year, d.month, last_day)
 
 
+def year_bounds(year: int) -> tuple[date, date]:
+    return date(year, 1, 1), date(year, 12, 31)
+
+
 @app.get("/contracts/{contract_id}/summary/monthly", response_model=MonthlySummaryOut)
 def monthly_summary(contract_id: int, start: date | None = None, end: date | None = None):
     if start and end:
@@ -180,6 +248,98 @@ def monthly_summary(contract_id: int, start: date | None = None, end: date | Non
     base = start or end or date.today()
     start_date, end_date = month_bounds(base)
     return build_month_summary(contract_id, start_date, end_date)
+
+
+def build_year_summary(contract_id: int, year: int) -> dict:
+    with session_scope() as db:
+        contract = crud.get_contract(db, contract_id)
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
+
+        start, end = year_bounds(year)
+        workdays = crud.list_workdays(db, contract_id, start, end)
+
+        cf = ContractFacts(
+            start_date=contract.start_date,
+            end_date=contract.end_date,
+            hours_per_week=contract.hours_per_week,
+            weeks_per_year=contract.weeks_per_year,
+            hourly_rate=contract.hourly_rate,
+        )
+
+        monthly_items = []
+        totals = {
+            "hours_real": 0.0,
+            "hours_normal": 0.0,
+            "hours_majorated": 0.0,
+            "work_days": 0,
+            "absence_days": 0,
+            "unpaid_leave_days": 0,
+            "assmat_leave_days": 0,
+            "holiday_days": 0,
+            "salary_base": 0.0,
+            "salary_majoration": 0.0,
+            "salary_real_estimated": 0.0,
+            "fee_meal_days": 0,
+            "fee_maintenance_days": 0,
+            "fee_meal_total": 0.0,
+            "fee_maintenance_total": 0.0,
+            "unpaid_leave_deduction": 0.0,
+            "total_estimated": 0.0,
+        }
+
+        for month in range(1, 13):
+            month_start = date(year, month, 1)
+            month_end = date(year, month, calendar.monthrange(year, month)[1])
+            month_workdays = [wd for wd in workdays if wd.date.month == month]
+            summary = summarize_period(
+                contract, month_workdays, start=month_start, end=month_end
+            )
+            monthly_items.append(
+                {"month": month, "label": MONTH_NAMES[month - 1], "summary": summary}
+            )
+
+            totals["hours_real"] += summary.hours_real
+            totals["hours_normal"] += summary.hours_normal
+            totals["hours_majorated"] += summary.hours_majorated
+            totals["work_days"] += summary.work_days
+            totals["absence_days"] += summary.absence_days
+            totals["unpaid_leave_days"] += summary.unpaid_leave_days
+            totals["assmat_leave_days"] += summary.assmat_leave_days
+            totals["holiday_days"] += summary.holiday_days
+            totals["salary_base"] += summary.salary_base
+            totals["salary_majoration"] += summary.salary_majoration
+            totals["salary_real_estimated"] += summary.salary_real_estimated
+            totals["fee_meal_days"] += summary.fee_meal_days
+            totals["fee_maintenance_days"] += summary.fee_maintenance_days
+            totals["fee_meal_total"] += summary.fee_meal_total
+            totals["fee_maintenance_total"] += summary.fee_maintenance_total
+            totals["unpaid_leave_deduction"] += summary.unpaid_leave_deduction
+            totals["total_estimated"] += summary.total_estimated
+
+        yearly_hours_theoretical = contract_monthly_hours(cf) * 12
+        yearly_salary_theoretical = contract_monthly_salary(cf) * 12
+        hours_delta = totals["hours_real"] - yearly_hours_theoretical
+        average_hours = (
+            totals["hours_real"] / totals["work_days"] if totals["work_days"] else 0.0
+        )
+
+        totals.update(
+            {
+                "hours_delta": hours_delta,
+                "average_hours_per_day": average_hours,
+                "yearly_hours_theoretical": yearly_hours_theoretical,
+                "yearly_salary_theoretical": yearly_salary_theoretical,
+            }
+        )
+
+        return {
+            "year": year,
+            "period_start": start,
+            "period_end": end,
+            "monthly_items": monthly_items,
+            "totals": totals,
+        }
 
 
 @app.get("/contracts/{contract_id}/calendar", response_class=HTMLResponse)
@@ -327,14 +487,24 @@ def month_summary(
         "partials/month_summary.html",
         {
             "request": request,
-            "period_start": summary.period_start,
-            "period_end": summary.period_end,
-            "monthly_hours_theoretical": summary.monthly_hours_theoretical,
-            "monthly_salary_theoretical": summary.monthly_salary_theoretical,
-            "hours_real": summary.hours_real,
-            "salary_real_estimated": summary.salary_real_estimated,
-            "fee_meal_days": summary.fee_meal_days,
-            "fee_maintenance_days": summary.fee_maintenance_days,
+            **summary.model_dump(),
+        },
+    )
+
+
+@app.get("/contracts/{contract_id}/year_summary", response_class=HTMLResponse)
+def year_summary(
+    contract_id: int,
+    request: Request,
+    year: int | None = None,
+):
+    target_year = year or date.today().year
+    summary = build_year_summary(contract_id, target_year)
+    return templates.TemplateResponse(
+        "partials/year_summary.html",
+        {
+            "request": request,
+            **summary,
         },
     )
 
