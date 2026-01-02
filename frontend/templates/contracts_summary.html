@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Contrats</h1>
+    <p class="page-subtitle">Synthese rapide de tous les contrats disponibles.</p>
+  </div>
+</div>
+
+<section class="contracts-grid">
+  {% for item in items %}
+    <article class="card contract-card">
+      <div class="card__header">
+        <div>
+          <div class="title">Contrat #{{ item.id }}</div>
+          <div class="muted">{{ item.child_name }}</div>
+        </div>
+        {% if item.is_active %}
+          <span class="badge badge--ok">Actif</span>
+        {% else %}
+          <span class="badge">Clos</span>
+        {% endif %}
+      </div>
+      <div class="card__body">
+        <div class="summary-list">
+          <div class="summary-row">
+            <span class="label">Periode</span>
+            <span class="value">{{ item.start_date }} → {{ item.end_date or "—" }}</span>
+          </div>
+          <div class="summary-row">
+            <span class="label">Heures / semaine</span>
+            <span class="value">{{ item.hours_per_week | round(2) }} h</span>
+          </div>
+          <div class="summary-row">
+            <span class="label">Semaines / an</span>
+            <span class="value">{{ item.weeks_per_year | round(2) }}</span>
+          </div>
+          <div class="summary-row">
+            <span class="label">Tarif horaire</span>
+            <span class="value">{{ item.hourly_rate | round(2) }} €</span>
+          </div>
+          <div class="divider"></div>
+          <div class="summary-row">
+            <span class="label">Heures mensualisees</span>
+            <span class="value">{{ item.monthly_hours_theoretical | round(2) }} h</span>
+          </div>
+          <div class="summary-row">
+            <span class="label">Salaire mensualise</span>
+            <span class="value">{{ item.monthly_salary_theoretical | round(2) }} €</span>
+          </div>
+        </div>
+      </div>
+      <div class="card__footer contract-actions">
+        <a class="btn btn-secondary" href="/contracts/{{ item.id }}/calendar">Calendrier</a>
+        <a class="btn" href="/contracts/{{ item.id }}/summary/year">Synthese annuelle</a>
+      </div>
+    </article>
+  {% else %}
+    <div class="empty">Aucun contrat disponible.</div>
+  {% endfor %}
+</section>
+
+{% endblock %}

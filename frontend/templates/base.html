@@ -13,9 +13,11 @@
   <header class="topbar">
     <div class="container topbar__inner">
       <div class="brand">MonAssmat</div>
-      <div class="topbar__meta">
-        <span class="chip">Contract #{{ contract_id }}</span>
-      </div>
+      {% if contract_id %}
+        <div class="topbar__meta">
+          <span class="chip">Contract #{{ contract_id }}</span>
+        </div>
+      {% endif %}
     </div>
   </header>
 

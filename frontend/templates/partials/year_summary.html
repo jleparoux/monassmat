@@ -1,90 +1,115 @@
-<div class="summary-section">
-  <div class="summary-title">Totaux annuels</div>
-  <div class="summary-list">
-    <div class="summary-row">
-      <span class="label">Heures contractuelles</span>
-      <span class="value">{{ totals.yearly_hours_theoretical | round(2) }} h</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Heures travaillees</span>
-      <span class="value">{{ totals.hours_real | round(2) }} h</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Heures majorees</span>
-      <span class="value">{{ totals.hours_majorated | round(2) }} h</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Ecart heures</span>
-      <span class="value">{{ totals.hours_delta | round(2) }} h</span>
-    </div>
-    <div class="divider"></div>
-    <div class="summary-row">
-      <span class="label">Jours travailles</span>
-      <span class="value">{{ totals.work_days }}</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Absences</span>
-      <span class="value">{{ totals.absence_days }}</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Conges assmat</span>
-      <span class="value">{{ totals.assmat_leave_days }}</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Sans solde</span>
-      <span class="value">{{ totals.unpaid_leave_days }}</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Jours feries</span>
-      <span class="value">{{ totals.holiday_days }}</span>
-    </div>
-    <div class="divider"></div>
-    <div class="summary-row">
-      <span class="label">Frais repas</span>
-      <span class="value">{{ totals.fee_meal_days }} j / {{ totals.fee_meal_total | round(2) }} €</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Frais entretien</span>
-      <span class="value">{{ totals.fee_maintenance_days }} j / {{ totals.fee_maintenance_total | round(2) }} €</span>
-    </div>
-    <div class="divider"></div>
-    <div class="summary-row">
-      <span class="label">Salaire mensualise</span>
-      <span class="value">{{ totals.yearly_salary_theoretical | round(2) }} €</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Salaire heures reelles</span>
-      <span class="value">{{ totals.salary_base | round(2) }} €</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Majoration</span>
-      <span class="value">{{ totals.salary_majoration | round(2) }} €</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Deduction sans solde</span>
-      <span class="value">-{{ totals.unpaid_leave_deduction | round(2) }} €</span>
-    </div>
-    <div class="summary-row">
-      <span class="label">Total estime</span>
-      <span class="value highlight">{{ totals.total_estimated | round(2) }} €</span>
-    </div>
+<div class="summary-kpis">
+  <div class="kpi">
+    <div class="kpi__label">Total estime</div>
+    <div class="kpi__value">{{ totals.total_estimated | round(2) }} €</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__label">Salaire reel</div>
+    <div class="kpi__value">{{ totals.salary_real_estimated | round(2) }} €</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__label">Frais</div>
+    <div class="kpi__value">{{ (totals.fee_meal_total + totals.fee_maintenance_total) | round(2) }} €</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__label">Heures travaillees</div>
+    <div class="kpi__value">{{ totals.hours_real | round(2) }} h</div>
   </div>
 </div>
 
-<div class="summary-section">
-  <div class="summary-title">Detail par mois</div>
-  <div class="summary-table">
-    <div class="summary-table__row summary-table__header">
-      <span>Mois</span>
-      <span>Heures</span>
-      <span>Total</span>
-    </div>
-    {% for item in monthly_items %}
-      <div class="summary-table__row">
-        <span>{{ item.label }}</span>
-        <span>{{ item.summary.hours_real | round(2) }} h</span>
-        <span>{{ item.summary.total_estimated | round(2) }} €</span>
+<div class="summary-split">
+  <div class="summary-section">
+    <div class="summary-title">Totaux annuels</div>
+    <div class="summary-list">
+      <div class="summary-row">
+        <span class="label">Heures contractuelles</span>
+        <span class="value">{{ totals.yearly_hours_theoretical | round(2) }} h</span>
       </div>
-    {% endfor %}
+      <div class="summary-row">
+        <span class="label">Heures travaillees</span>
+        <span class="value">{{ totals.hours_real | round(2) }} h</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Heures majorees</span>
+        <span class="value">{{ totals.hours_majorated | round(2) }} h</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Ecart heures</span>
+        <span class="value">{{ totals.hours_delta | round(2) }} h</span>
+      </div>
+      <div class="divider"></div>
+      <div class="summary-row">
+        <span class="label">Jours travailles</span>
+        <span class="value">{{ totals.work_days }}</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Absences</span>
+        <span class="value">{{ totals.absence_days }}</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Conges assmat</span>
+        <span class="value">{{ totals.assmat_leave_days }}</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Sans solde</span>
+        <span class="value">{{ totals.unpaid_leave_days }}</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Jours feries</span>
+        <span class="value">{{ totals.holiday_days }}</span>
+      </div>
+      <div class="divider"></div>
+      <div class="summary-row">
+        <span class="label">Frais repas</span>
+        <span class="value">{{ totals.fee_meal_days }} j / {{ totals.fee_meal_total | round(2) }} €</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Frais entretien</span>
+        <span class="value">{{ totals.fee_maintenance_days }} j / {{ totals.fee_maintenance_total | round(2) }} €</span>
+      </div>
+      <div class="divider"></div>
+      <div class="summary-row">
+        <span class="label">Salaire mensualise</span>
+        <span class="value">{{ totals.yearly_salary_theoretical | round(2) }} €</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Salaire heures reelles</span>
+        <span class="value">{{ totals.salary_base | round(2) }} €</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Majoration</span>
+        <span class="value">{{ totals.salary_majoration | round(2) }} €</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Deduction sans solde</span>
+        <span class="value">-{{ totals.unpaid_leave_deduction | round(2) }} €</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Total estime</span>
+        <span class="value highlight">{{ totals.total_estimated | round(2) }} €</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="summary-section">
+    <div class="summary-title">Detail par mois</div>
+    <div class="summary-table summary-table--annual">
+      <div class="summary-table__row summary-table__header">
+        <span>Mois</span>
+        <span>Jours</span>
+        <span>Heures</span>
+        <span>Frais</span>
+        <span>Total</span>
+      </div>
+      {% for item in monthly_items %}
+        <div class="summary-table__row">
+          <span>{{ item.label }}</span>
+          <span>{{ item.summary.work_days }}</span>
+          <span>{{ item.summary.hours_real | round(2) }} h</span>
+          <span>{{ (item.summary.fee_meal_total + item.summary.fee_maintenance_total) | round(2) }} €</span>
+          <span>{{ item.summary.total_estimated | round(2) }} €</span>
+        </div>
+      {% endfor %}
+    </div>
   </div>
 </div>

@@ -12,6 +12,11 @@ def get_contract(db: Session, contract_id: int) -> Contract | None:
     return db.get(Contract, contract_id)
 
 
+def list_contracts(db: Session) -> list[Contract]:
+    stmt = select(Contract).order_by(Contract.id.asc())
+    return list(db.scalars(stmt).all())
+
+
 def list_workdays(db: Session, contract_id: int, start: date, end: date) -> list[Workday]:
     stmt = (
         select(Workday)

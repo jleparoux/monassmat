@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Synthese annuelle</h1>
+    <p class="page-subtitle">Vue globale du contrat sur une annee complete.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/calendar">Calendrier</a>
+    <a class="btn" href="/contracts/{{ contract_id }}/settings">Parametres</a>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card__header">
+    <div>
+      <div class="title">Annee {{ year }}</div>
+      <div class="muted">{{ period_start }} → {{ period_end }}</div>
+    </div>
+    <div class="summary-nav">
+      <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year?year={{ prev_year }}">← {{ prev_year }}</a>
+      <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year?year={{ next_year }}">{{ next_year }} →</a>
+    </div>
+  </div>
+  <div class="card__body">
+    {% include "partials/year_summary.html" %}
+  </div>
+</section>
+
+{% endblock %}

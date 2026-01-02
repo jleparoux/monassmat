@@ -509,6 +509,63 @@ def year_summary(
     )
 
 
+@app.get("/contracts/{contract_id}/summary/year", response_class=HTMLResponse)
+def year_summary_page(
+    contract_id: int,
+    request: Request,
+    year: int | None = None,
+):
+    target_year = year or date.today().year
+    summary = build_year_summary(contract_id, target_year)
+    return templates.TemplateResponse(
+        "year_summary_page.html",
+        {
+            "request": request,
+            "title": "Synthese annuelle",
+            "contract_id": contract_id,
+            "prev_year": target_year - 1,
+            "next_year": target_year + 1,
+            **summary,
+        },
+    )
+
+
+@app.get("/contracts", response_class=HTMLResponse)
+def contracts_summary(request: Request, db: Session = Depends(get_db)):
+    contracts = crud.list_contracts(db)
+    items = []
+    for contract in contracts:
+        facts = ContractFacts(
+            start_date=contract.start_date,
+            end_date=contract.end_date,
+            hours_per_week=contract.hours_per_week,
+            weeks_per_year=contract.weeks_per_year,
+            hourly_rate=contract.hourly_rate,
+        )
+        items.append(
+            {
+                "id": contract.id,
+                "child_name": contract.child.name if contract.child else "—",
+                "start_date": contract.start_date,
+                "end_date": contract.end_date,
+                "hours_per_week": contract.hours_per_week,
+                "weeks_per_year": contract.weeks_per_year,
+                "hourly_rate": contract.hourly_rate,
+                "monthly_hours_theoretical": contract_monthly_hours(facts),
+                "monthly_salary_theoretical": contract_monthly_salary(facts),
+                "is_active": contract.end_date is None or contract.end_date >= date.today(),
+            }
+        )
+    return templates.TemplateResponse(
+        "contracts_summary.html",
+        {
+            "request": request,
+            "title": "Contrats",
+            "items": items,
+        },
+    )
+
+
 @app.post("/contracts/{contract_id}/workdays", response_class=HTMLResponse)
 def save_workday(
     contract_id: int,
