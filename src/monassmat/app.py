@@ -812,6 +812,7 @@ def year_summary_page(
         contract = crud.get_contract(db, contract_id)
         if not contract:
             raise HTTPException(status_code=404, detail="Contract not found")
+        contract_name = contract.name
     summary = build_year_summary(contract_id, target_year)
     return templates.TemplateResponse(
         "year_summary_page.html",
@@ -819,7 +820,7 @@ def year_summary_page(
             "request": request,
             "title": "Synthese annuelle",
             "contract_id": contract_id,
-            "contract": contract,
+            "contract_name": contract_name,
             "prev_year": target_year - 1,
             "next_year": target_year + 1,
             **summary,
