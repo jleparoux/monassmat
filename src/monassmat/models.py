@@ -60,6 +60,7 @@ class Contract(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     child_id: Mapped[int] = mapped_column(ForeignKey("child.id"), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(120))
 
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date)

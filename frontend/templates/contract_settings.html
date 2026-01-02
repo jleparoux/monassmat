@@ -18,6 +18,10 @@
     {% endif %}
 
     <form method="post" action="/contracts/{{ contract.id }}/settings">
+      <label class="field">
+        <span>Nom du contrat</span>
+        <input name="contract_name" type="text" value="{{ contract.name or '' }}" />
+      </label>
       <div class="field-group">
         <label class="field">
           <span>Date de debut</span>

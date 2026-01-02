@@ -21,7 +21,7 @@ from .calculations import (
     workday_totals,
 )
 from .db import get_db, session_scope
-from .models import WorkdayKind
+from .models import Child, Contract, WorkdayKind
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # .../monassmat/
@@ -473,6 +473,7 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
 def save_contract_settings(
     contract_id: int,
     request: Request,
+    contract_name: str | None = Form(None),
     start_date: str = Form(...),
     end_date: str | None = Form(None),
     effective_from: str = Form(...),
@@ -503,6 +504,7 @@ def save_contract_settings(
         "salary_net_ceiling": contract.salary_net_ceiling,
     }
 
+    contract.name = contract_name.strip() if contract_name else None
     contract.start_date = date_from_iso(start_date)
     contract.end_date = date_from_iso(end_date) if end_date else None
     contract.hours_per_week = float(hours_per_week)
@@ -596,6 +598,7 @@ def edit_settings_snapshot(
 def save_settings_snapshot(
     contract_id: int,
     request: Request,
+    original_valid_from: str = Form(...),
     valid_from: str = Form(...),
     hours_per_week: str = Form(...),
     weeks_per_year: str = Form(...),
@@ -612,12 +615,36 @@ def save_settings_snapshot(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
 
+    original_valid_from_date = date_from_iso(original_valid_from)
     valid_from_date = date_from_iso(valid_from)
     snapshot = crud.get_settings_snapshot(
-        db, contract_id=contract_id, valid_from=valid_from_date
+        db, contract_id=contract_id, valid_from=original_valid_from_date
     )
     if not snapshot:
         raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    if valid_from_date != original_valid_from_date:
+        existing = crud.get_settings_snapshot(
+            db, contract_id=contract_id, valid_from=valid_from_date
+        )
+        if existing:
+            return templates.TemplateResponse(
+                "settings_snapshot_form.html",
+                {
+                    "request": request,
+                    "title": "Modifier snapshot",
+                    "contract": contract,
+                    "contract_id": contract_id,
+                    "snapshot": snapshot,
+                    "error": "Un snapshot existe deja a cette date.",
+                },
+            )
+
+        deleted = crud.delete_settings_snapshot(
+            db, contract_id=contract_id, valid_from=original_valid_from_date
+        )
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Snapshot not found")
 
     crud.upsert_settings_snapshot(
         db,
@@ -781,6 +808,10 @@ def year_summary_page(
     year: int | None = None,
 ):
     target_year = year or date.today().year
+    with session_scope() as db:
+        contract = crud.get_contract(db, contract_id)
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
     summary = build_year_summary(contract_id, target_year)
     return templates.TemplateResponse(
         "year_summary_page.html",
@@ -788,6 +819,7 @@ def year_summary_page(
             "request": request,
             "title": "Synthese annuelle",
             "contract_id": contract_id,
+            "contract": contract,
             "prev_year": target_year - 1,
             "next_year": target_year + 1,
             **summary,
@@ -810,6 +842,7 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
         items.append(
             {
                 "id": contract.id,
+                "name": contract.name,
                 "child_name": contract.child.name if contract.child else "—",
                 "start_date": contract.start_date,
                 "end_date": contract.end_date,
@@ -827,6 +860,86 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
             "request": request,
             "title": "Contrats",
             "items": items,
+        },
+    )
+
+
+@app.get("/contracts/new", response_class=HTMLResponse)
+def new_contract(request: Request):
+    return templates.TemplateResponse(
+        "contract_new.html",
+        {
+            "request": request,
+            "title": "Nouveau contrat",
+        },
+    )
+
+
+@app.post("/contracts/new", response_class=HTMLResponse)
+def create_contract(
+    request: Request,
+    contract_name: str | None = Form(None),
+    child_name: str = Form(...),
+    child_birth_date: str = Form(...),
+    start_date: str = Form(...),
+    end_date: str | None = Form(None),
+    hours_per_week: str = Form(...),
+    weeks_per_year: str = Form(...),
+    hourly_rate: str = Form(...),
+    days_per_week: str | None = Form(None),
+    majoration_threshold: str | None = Form(None),
+    majoration_rate: str | None = Form(None),
+    fee_meal_amount: str | None = Form(None),
+    fee_maintenance_amount: str | None = Form(None),
+    salary_net_ceiling: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    child = Child(
+        name=child_name.strip(),
+        birth_date=date_from_iso(child_birth_date),
+    )
+    contract = Contract(
+        child=child,
+        name=contract_name.strip() if contract_name else None,
+        start_date=date_from_iso(start_date),
+        end_date=date_from_iso(end_date) if end_date else None,
+        hours_per_week=float(hours_per_week),
+        weeks_per_year=float(weeks_per_year),
+        hourly_rate=float(hourly_rate),
+        days_per_week=parse_optional_int(days_per_week),
+        majoration_threshold=parse_optional_float(majoration_threshold),
+        majoration_rate=parse_optional_float(majoration_rate),
+        fee_meal_amount=parse_optional_float(fee_meal_amount),
+        fee_maintenance_amount=parse_optional_float(fee_maintenance_amount),
+        salary_net_ceiling=parse_optional_float(salary_net_ceiling),
+    )
+    db.add(child)
+    db.add(contract)
+    db.flush()
+
+    crud.upsert_settings_snapshot(
+        db,
+        contract_id=contract.id,
+        valid_from=contract.start_date,
+        hours_per_week=contract.hours_per_week,
+        weeks_per_year=contract.weeks_per_year,
+        hourly_rate=contract.hourly_rate,
+        days_per_week=contract.days_per_week,
+        majoration_threshold=contract.majoration_threshold,
+        majoration_rate=contract.majoration_rate,
+        fee_meal_amount=contract.fee_meal_amount,
+        fee_maintenance_amount=contract.fee_maintenance_amount,
+        salary_net_ceiling=contract.salary_net_ceiling,
+    )
+    db.commit()
+
+    return templates.TemplateResponse(
+        "contract_new.html",
+        {
+            "request": request,
+            "title": "Nouveau contrat",
+            "saved": True,
+            "contract_id": contract.id,
         },
     )
 

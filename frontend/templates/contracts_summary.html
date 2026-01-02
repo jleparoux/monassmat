@@ -10,6 +10,7 @@
     <a class="btn btn-secondary" data-quick-action="calendar" href="#">Calendrier actif</a>
     <a class="btn" data-quick-action="year" href="#">Synthese annuelle</a>
     <a class="btn" data-quick-action="settings" href="#">Parametres</a>
+    <a class="btn btn-primary" href="/contracts/new">Nouveau contrat</a>
   </div>
 </div>
 
@@ -64,7 +65,9 @@
              data-id="{{ item.id }}">
       <div class="card__header">
         <div>
-          <div class="title">Contrat #{{ item.id }}</div>
+          <div class="title">
+            Contrat #{{ item.id }}{% if item.name %} - {{ item.name }}{% endif %}
+          </div>
           <div class="muted">{{ item.child_name }}</div>
         </div>
         {% if item.is_active %}

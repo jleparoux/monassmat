@@ -9,6 +9,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Synthese annuelle: `/contracts/{id}/year_summary?year=YYYY`
 - Page synthese annuelle: `/contracts/{id}/summary/year?year=YYYY`
 - Page liste contrats: `/contracts`
+- Creation contrat: `/contracts/new`
 - Types de journee: travail, absence, conge sans solde, jour ferie
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
 

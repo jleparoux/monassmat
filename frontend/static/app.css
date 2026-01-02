@@ -513,6 +513,11 @@ a { color: inherit; }
   font-size: 12px;
   margin: 10px 0;
 }
+.notice--error {
+  border-color: rgba(220,38,38,0.3);
+  background: rgba(248,113,113,0.12);
+  color: #991b1b;
+}
 
 .modal {
   position: fixed;

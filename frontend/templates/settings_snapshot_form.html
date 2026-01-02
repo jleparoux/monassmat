@@ -16,11 +16,15 @@
     {% if saved %}
       <div class="notice notice--ok">Snapshot mis a jour.</div>
     {% endif %}
+    {% if error %}
+      <div class="notice notice--error">{{ error }}</div>
+    {% endif %}
     <form method="post" action="/contracts/{{ contract.id }}/settings_snapshot">
       <label class="field">
         <span>Application des parametres a partir du</span>
-        <input name="valid_from" type="date" value="{{ snapshot.valid_from }}" readonly />
+        <input name="valid_from" type="date" value="{{ snapshot.valid_from }}" required />
       </label>
+      <input type="hidden" name="original_valid_from" value="{{ snapshot.valid_from }}" />
 
       <div class="field-group">
         <label class="field">

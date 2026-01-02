@@ -15,7 +15,9 @@
 <section class="card">
   <div class="card__header">
     <div>
-      <div class="title">Annee {{ year }}</div>
+      <div class="title">
+        Contrat #{{ contract.id }}{% if contract.name %} - {{ contract.name }}{% endif %} · Annee {{ year }}
+      </div>
       <div class="muted">{{ period_start }} → {{ period_end }}</div>
     </div>
     <div class="summary-nav">
