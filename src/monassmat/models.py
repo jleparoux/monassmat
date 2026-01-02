@@ -100,6 +100,11 @@ class Contract(Base):
         cascade="all, delete-orphan",
     )
 
+    settings_snapshots: Mapped[list["ContractSettingsSnapshot"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+    )
+
 
 class Workday(Base):
     __tablename__ = "workday"
@@ -140,6 +145,36 @@ class RateSnapshot(Base):
     hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
 
     contract: Mapped["Contract"] = relationship(back_populates="rate_snapshots")
+
+
+class ContractSettingsSnapshot(Base):
+    __tablename__ = "contract_settings_snapshot"
+    __table_args__ = (
+        UniqueConstraint(
+            "contract_id",
+            "valid_from",
+            name="uq_contract_settings_snapshot",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_id: Mapped[int] = mapped_column(
+        ForeignKey("contract.id"), nullable=False
+    )
+
+    valid_from: Mapped[date] = mapped_column(Date, nullable=False)
+
+    hours_per_week: Mapped[float] = mapped_column(Float, nullable=False)
+    weeks_per_year: Mapped[float] = mapped_column(Float, nullable=False)
+    hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    days_per_week: Mapped[int | None] = mapped_column(Integer)
+    majoration_threshold: Mapped[float | None] = mapped_column(Float)
+    majoration_rate: Mapped[float | None] = mapped_column(Float)
+    fee_meal_amount: Mapped[float | None] = mapped_column(Float)
+    fee_maintenance_amount: Mapped[float | None] = mapped_column(Float)
+    salary_net_ceiling: Mapped[float | None] = mapped_column(Float)
+
+    contract: Mapped["Contract"] = relationship(back_populates="settings_snapshots")
 
 
 class PaidLeave(Base):

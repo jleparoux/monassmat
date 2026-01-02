@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Modifier un snapshot</h1>
+    <p class="page-subtitle">Edition des parametres historiques du contrat.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="/contracts/{{ contract.id }}/settings">Retour parametres</a>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card__body">
+    {% if saved %}
+      <div class="notice notice--ok">Snapshot mis a jour.</div>
+    {% endif %}
+    <form method="post" action="/contracts/{{ contract.id }}/settings_snapshot">
+      <label class="field">
+        <span>Application des parametres a partir du</span>
+        <input name="valid_from" type="date" value="{{ snapshot.valid_from }}" readonly />
+      </label>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Heures par semaine</span>
+          <input name="hours_per_week" type="number" step="0.01" value="{{ snapshot.hours_per_week }}" required />
+        </label>
+        <label class="field">
+          <span>Semaines par an</span>
+          <input name="weeks_per_year" type="number" step="0.01" value="{{ snapshot.weeks_per_year }}" required />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Tarif horaire</span>
+        <input name="hourly_rate" type="number" step="0.01" value="{{ snapshot.hourly_rate }}" required />
+      </label>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Jours par semaine</span>
+          <input name="days_per_week" type="number" step="1" value="{{ snapshot.days_per_week or '' }}" />
+        </label>
+        <label class="field">
+          <span>Seuil majoration</span>
+          <input name="majoration_threshold" type="number" step="0.01" value="{{ snapshot.majoration_threshold or '' }}" />
+        </label>
+      </div>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Taux majoration</span>
+          <input name="majoration_rate" type="number" step="0.01" value="{{ snapshot.majoration_rate or '' }}" />
+        </label>
+        <label class="field">
+          <span>Plafond salaire net</span>
+          <input name="salary_net_ceiling" type="number" step="0.01" value="{{ snapshot.salary_net_ceiling or '' }}" />
+        </label>
+      </div>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Frais repas</span>
+          <input name="fee_meal_amount" type="number" step="0.01" value="{{ snapshot.fee_meal_amount or '' }}" />
+        </label>
+        <label class="field">
+          <span>Frais entretien</span>
+          <input name="fee_maintenance_amount" type="number" step="0.01" value="{{ snapshot.fee_maintenance_amount or '' }}" />
+        </label>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

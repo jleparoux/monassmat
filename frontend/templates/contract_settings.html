@@ -13,6 +13,9 @@
     {% if saved %}
       <div class="notice notice--ok">Parametres enregistres.</div>
     {% endif %}
+    {% if deleted %}
+      <div class="notice notice--ok">Snapshot supprime.</div>
+    {% endif %}
 
     <form method="post" action="/contracts/{{ contract.id }}/settings">
       <div class="field-group">
@@ -25,6 +28,11 @@
           <input name="end_date" type="date" value="{{ contract.end_date or '' }}" />
         </label>
       </div>
+
+      <label class="field">
+        <span>Application des parametres a partir du</span>
+        <input name="effective_from" type="date" value="{{ effective_from }}" required />
+      </label>
 
       <div class="field-group">
         <label class="field">
@@ -79,6 +87,41 @@
         <button class="btn btn-primary" type="submit">Sauvegarder</button>
       </div>
     </form>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card__header">
+    <div class="title">Historique des parametres</div>
+  </div>
+  <div class="card__body">
+    {% if snapshots %}
+      <div class="summary-table summary-table--settings">
+        <div class="summary-table__row summary-table__header">
+          <span>Actif a partir du</span>
+          <span>Heures/sem</span>
+          <span>Sem/an</span>
+          <span>Tarif</span>
+          <span></span>
+          <span></span>
+        </div>
+        {% for snap in snapshots %}
+          <div class="summary-table__row">
+            <span>{{ snap.valid_from }}</span>
+            <span>{{ snap.hours_per_week | round(2) }} h</span>
+            <span>{{ snap.weeks_per_year | round(2) }}</span>
+            <span>{{ snap.hourly_rate | round(2) }} €</span>
+            <a class="link" href="/contracts/{{ contract.id }}/settings_snapshot?valid_from={{ snap.valid_from }}">Modifier</a>
+            <form method="post" action="/contracts/{{ contract.id }}/settings_snapshot/delete">
+              <input type="hidden" name="valid_from" value="{{ snap.valid_from }}" />
+              <button class="link link--danger" type="submit">Supprimer</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">Aucun snapshot pour l'instant. Sauvegarde pour en creer un.</div>
+    {% endif %}
   </div>
 </section>
 

@@ -341,6 +341,21 @@ a { color: inherit; }
   color: var(--muted);
   font-weight: 600;
 }
+.summary-table--settings .summary-table__row {
+  grid-template-columns: 1.2fr 0.7fr 0.7fr 0.7fr 0.8fr 0.9fr;
+}
+.summary-table--settings .summary-table__row span:nth-child(2),
+.summary-table--settings .summary-table__row span:nth-child(3),
+.summary-table--settings .summary-table__row span:nth-child(4) { text-align: right; }
+.summary-table--settings .summary-table__row a { justify-self: end; }
+.link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 12px;
+}
+.link:hover { text-decoration: underline; }
+.link--danger { color: #dc2626; background: none; border: none; padding: 0; cursor: pointer; }
 .summary-table--annual .summary-table__row {
   grid-template-columns: 1.1fr 0.6fr 0.9fr 0.8fr 0.9fr;
 }

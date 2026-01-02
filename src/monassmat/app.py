@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, time, timedelta
 import calendar
 from pathlib import Path
 
@@ -92,80 +92,172 @@ def parse_days_list(value: str) -> list[date]:
     return items
 
 
+def iter_days(start: date, end: date):
+    current = start
+    while current <= end:
+        yield current
+        current += timedelta(days=1)
+
+
+def snapshot_from_contract(contract, valid_from: date) -> dict:
+    return {
+        "valid_from": valid_from,
+        "hours_per_week": contract.hours_per_week,
+        "weeks_per_year": contract.weeks_per_year,
+        "hourly_rate": contract.hourly_rate,
+        "days_per_week": contract.days_per_week,
+        "majoration_threshold": contract.majoration_threshold,
+        "majoration_rate": contract.majoration_rate,
+        "fee_meal_amount": contract.fee_meal_amount,
+        "fee_maintenance_amount": contract.fee_maintenance_amount,
+        "salary_net_ceiling": contract.salary_net_ceiling,
+    }
+
+
+def snapshot_from_row(row) -> dict:
+    return {
+        "valid_from": row.valid_from,
+        "hours_per_week": row.hours_per_week,
+        "weeks_per_year": row.weeks_per_year,
+        "hourly_rate": row.hourly_rate,
+        "days_per_week": row.days_per_week,
+        "majoration_threshold": row.majoration_threshold,
+        "majoration_rate": row.majoration_rate,
+        "fee_meal_amount": row.fee_meal_amount,
+        "fee_maintenance_amount": row.fee_maintenance_amount,
+        "salary_net_ceiling": row.salary_net_ceiling,
+    }
+
+
+def build_settings_timeline(contract, snapshots: list) -> list[dict]:
+    if not snapshots:
+        return [snapshot_from_contract(contract, contract.start_date)]
+    ordered = [snapshot_from_row(row) for row in snapshots]
+    ordered.sort(key=lambda item: item["valid_from"])
+    return ordered
+
+
 def summarize_period(
     contract,
     workdays,
+    settings_snapshots,
     *,
     start: date,
     end: date,
 ) -> MonthlySummaryOut:
-    cf = ContractFacts(
-        start_date=contract.start_date,
-        end_date=contract.end_date,
-        hours_per_week=contract.hours_per_week,
-        weeks_per_year=contract.weeks_per_year,
-        hourly_rate=contract.hourly_rate,
-    )
-    wd_facts = [
-        WorkdayFacts(
-            day=wd.date,
-            hours=wd.hours,
-            kind=CalcWorkdayKind(wd.kind.value),
+    settings = build_settings_timeline(contract, settings_snapshots)
+    settings_index = 0
+
+    workdays_by_date = {wd.date: wd for wd in workdays}
+
+    theo_hours = 0.0
+    theo_salary = 0.0
+    real_hours = 0.0
+    normal_hours = 0.0
+    majorated_hours = 0.0
+    salary_base = 0.0
+    salary_majoration = 0.0
+
+    work_days = 0
+    absence_days = 0
+    unpaid_leave_days = 0
+    assmat_leave_days = 0
+    holiday_days = 0
+
+    fee_meal_days = 0
+    fee_maintenance_days = 0
+    fee_meal_total = 0.0
+    fee_maintenance_total = 0.0
+    unpaid_deduction = 0.0
+
+    for day in iter_days(start, end):
+        while (
+            settings_index + 1 < len(settings)
+            and settings[settings_index + 1]["valid_from"] <= day
+        ):
+            settings_index += 1
+        current = settings[settings_index]
+
+        facts = ContractFacts(
+            start_date=contract.start_date,
+            end_date=contract.end_date,
+            hours_per_week=current["hours_per_week"],
+            weeks_per_year=current["weeks_per_year"],
+            hourly_rate=current["hourly_rate"],
         )
-        for wd in workdays
-    ]
+        days_in_month = calendar.monthrange(day.year, day.month)[1]
+        theo_hours += contract_monthly_hours(facts) / days_in_month
+        theo_salary += contract_monthly_salary(facts) / days_in_month
 
-    totals = workday_totals(
-        wd_facts,
-        hourly_rate=contract.hourly_rate,
-        majoration_threshold=contract.majoration_threshold,
-        majoration_rate=contract.majoration_rate,
-    )
+        wd = workdays_by_date.get(day)
+        if not wd:
+            continue
 
-    work_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.NORMAL)
-    absence_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.ABSENCE)
-    unpaid_leave_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.UNPAID_LEAVE)
-    assmat_leave_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE)
-    holiday_days = sum(1 for wd in workdays if wd.kind == WorkdayKind.HOLIDAY)
+        if wd.kind == WorkdayKind.NORMAL:
+            work_days += 1
+        elif wd.kind == WorkdayKind.ABSENCE:
+            absence_days += 1
+        elif wd.kind == WorkdayKind.UNPAID_LEAVE:
+            unpaid_leave_days += 1
+            unpaid_deduction += unpaid_leave_deduction(
+                1,
+                hours_per_week=current["hours_per_week"],
+                days_per_week=current["days_per_week"],
+                hourly_rate=current["hourly_rate"],
+            )
+        elif wd.kind == WorkdayKind.ASSMAT_LEAVE:
+            assmat_leave_days += 1
+        elif wd.kind == WorkdayKind.HOLIDAY:
+            holiday_days += 1
 
-    fee_meal_days = sum(1 for wd in workdays if wd.fee_meal)
-    fee_maintenance_days = sum(1 for wd in workdays if wd.fee_maintenance)
-    fee_meal_total = (contract.fee_meal_amount or 0.0) * fee_meal_days
-    fee_maintenance_total = (contract.fee_maintenance_amount or 0.0) * fee_maintenance_days
+        if wd.kind == WorkdayKind.NORMAL and wd.hours > 0:
+            wd_totals = workday_totals(
+                [
+                    WorkdayFacts(
+                        day=wd.date,
+                        hours=wd.hours,
+                        kind=CalcWorkdayKind(wd.kind.value),
+                    )
+                ],
+                hourly_rate=current["hourly_rate"],
+                majoration_threshold=current["majoration_threshold"],
+                majoration_rate=current["majoration_rate"],
+            )
+            real_hours += wd_totals.total_hours
+            normal_hours += wd_totals.normal_hours
+            majorated_hours += wd_totals.majorated_hours
+            salary_base += wd_totals.base_salary
+            salary_majoration += wd_totals.majoration_salary
 
-    theo_hours = contract_monthly_hours(cf)
-    theo_salary = contract_monthly_salary(cf)
-    hours_delta = totals.total_hours - theo_hours
+        if wd.fee_meal:
+            fee_meal_days += 1
+            fee_meal_total += current["fee_meal_amount"] or 0.0
+        if wd.fee_maintenance:
+            fee_maintenance_days += 1
+            fee_maintenance_total += current["fee_maintenance_amount"] or 0.0
 
-    unpaid_deduction = unpaid_leave_deduction(
-        unpaid_leave_days,
-        hours_per_week=contract.hours_per_week,
-        days_per_week=contract.days_per_week,
-        hourly_rate=contract.hourly_rate,
-    )
-
-    total_estimated = (
-        totals.total_salary + fee_meal_total + fee_maintenance_total - unpaid_deduction
-    )
-    average_hours = totals.total_hours / work_days if work_days else 0.0
+    total_salary = salary_base + salary_majoration
+    hours_delta = real_hours - theo_hours
+    total_estimated = total_salary + fee_meal_total + fee_maintenance_total - unpaid_deduction
+    average_hours = real_hours / work_days if work_days else 0.0
 
     return MonthlySummaryOut(
         period_start=start,
         period_end=end,
         monthly_hours_theoretical=theo_hours,
         monthly_salary_theoretical=theo_salary,
-        hours_real=totals.total_hours,
-        hours_normal=totals.normal_hours,
-        hours_majorated=totals.majorated_hours,
+        hours_real=real_hours,
+        hours_normal=normal_hours,
+        hours_majorated=majorated_hours,
         hours_delta=hours_delta,
         work_days=work_days,
         absence_days=absence_days,
         unpaid_leave_days=unpaid_leave_days,
         assmat_leave_days=assmat_leave_days,
         holiday_days=holiday_days,
-        salary_base=totals.base_salary,
-        salary_majoration=totals.majoration_salary,
-        salary_real_estimated=totals.total_salary,
+        salary_base=salary_base,
+        salary_majoration=salary_majoration,
+        salary_real_estimated=total_salary,
         fee_meal_days=fee_meal_days,
         fee_maintenance_days=fee_maintenance_days,
         fee_meal_total=fee_meal_total,
@@ -183,7 +275,10 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
             raise HTTPException(status_code=404, detail="Contract not found")
 
         workdays = crud.list_workdays(db, contract_id, start, end)
-        return summarize_period(contract, workdays, start=start, end=end)
+        snapshots = crud.list_settings_snapshots(db, contract_id)
+        return summarize_period(
+            contract, workdays, snapshots, start=start, end=end
+        )
 
 
 @app.get("/health")
@@ -258,14 +353,7 @@ def build_year_summary(contract_id: int, year: int) -> dict:
 
         start, end = year_bounds(year)
         workdays = crud.list_workdays(db, contract_id, start, end)
-
-        cf = ContractFacts(
-            start_date=contract.start_date,
-            end_date=contract.end_date,
-            hours_per_week=contract.hours_per_week,
-            weeks_per_year=contract.weeks_per_year,
-            hourly_rate=contract.hourly_rate,
-        )
+        snapshots = crud.list_settings_snapshots(db, contract_id)
 
         monthly_items = []
         totals = {
@@ -286,6 +374,8 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             "fee_maintenance_total": 0.0,
             "unpaid_leave_deduction": 0.0,
             "total_estimated": 0.0,
+            "yearly_hours_theoretical": 0.0,
+            "yearly_salary_theoretical": 0.0,
         }
 
         for month in range(1, 13):
@@ -293,7 +383,11 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             month_end = date(year, month, calendar.monthrange(year, month)[1])
             month_workdays = [wd for wd in workdays if wd.date.month == month]
             summary = summarize_period(
-                contract, month_workdays, start=month_start, end=month_end
+                contract,
+                month_workdays,
+                snapshots,
+                start=month_start,
+                end=month_end,
             )
             monthly_items.append(
                 {"month": month, "label": MONTH_NAMES[month - 1], "summary": summary}
@@ -316,10 +410,10 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             totals["fee_maintenance_total"] += summary.fee_maintenance_total
             totals["unpaid_leave_deduction"] += summary.unpaid_leave_deduction
             totals["total_estimated"] += summary.total_estimated
+            totals["yearly_hours_theoretical"] += summary.monthly_hours_theoretical
+            totals["yearly_salary_theoretical"] += summary.monthly_salary_theoretical
 
-        yearly_hours_theoretical = contract_monthly_hours(cf) * 12
-        yearly_salary_theoretical = contract_monthly_salary(cf) * 12
-        hours_delta = totals["hours_real"] - yearly_hours_theoretical
+        hours_delta = totals["hours_real"] - totals["yearly_hours_theoretical"]
         average_hours = (
             totals["hours_real"] / totals["work_days"] if totals["work_days"] else 0.0
         )
@@ -328,8 +422,6 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             {
                 "hours_delta": hours_delta,
                 "average_hours_per_day": average_hours,
-                "yearly_hours_theoretical": yearly_hours_theoretical,
-                "yearly_salary_theoretical": yearly_salary_theoretical,
             }
         )
 
@@ -362,6 +454,7 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
     contract = crud.get_contract(db, contract_id)
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
+    snapshots = crud.list_settings_snapshots(db, contract_id)
 
     return templates.TemplateResponse(
         "contract_settings.html",
@@ -370,6 +463,8 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
             "title": "Parametres",
             "contract_id": contract_id,
             "contract": contract,
+            "snapshots": snapshots,
+            "effective_from": date.today().isoformat(),
         },
     )
 
@@ -380,6 +475,7 @@ def save_contract_settings(
     request: Request,
     start_date: str = Form(...),
     end_date: str | None = Form(None),
+    effective_from: str = Form(...),
     hours_per_week: str = Form(...),
     weeks_per_year: str = Form(...),
     hourly_rate: str = Form(...),
@@ -395,6 +491,18 @@ def save_contract_settings(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
 
+    previous_values = {
+        "hours_per_week": contract.hours_per_week,
+        "weeks_per_year": contract.weeks_per_year,
+        "hourly_rate": contract.hourly_rate,
+        "days_per_week": contract.days_per_week,
+        "majoration_threshold": contract.majoration_threshold,
+        "majoration_rate": contract.majoration_rate,
+        "fee_meal_amount": contract.fee_meal_amount,
+        "fee_maintenance_amount": contract.fee_maintenance_amount,
+        "salary_net_ceiling": contract.salary_net_ceiling,
+    }
+
     contract.start_date = date_from_iso(start_date)
     contract.end_date = date_from_iso(end_date) if end_date else None
     contract.hours_per_week = float(hours_per_week)
@@ -406,7 +514,40 @@ def save_contract_settings(
     contract.fee_meal_amount = parse_optional_float(fee_meal_amount)
     contract.fee_maintenance_amount = parse_optional_float(fee_maintenance_amount)
     contract.salary_net_ceiling = parse_optional_float(salary_net_ceiling)
+
+    snapshots = crud.list_settings_snapshots(db, contract_id)
+    effective_from_date = date_from_iso(effective_from)
+    if not snapshots:
+        crud.upsert_settings_snapshot(
+            db,
+            contract_id=contract_id,
+            valid_from=contract.start_date,
+            hours_per_week=previous_values["hours_per_week"],
+            weeks_per_year=previous_values["weeks_per_year"],
+            hourly_rate=previous_values["hourly_rate"],
+            days_per_week=previous_values["days_per_week"],
+            majoration_threshold=previous_values["majoration_threshold"],
+            majoration_rate=previous_values["majoration_rate"],
+            fee_meal_amount=previous_values["fee_meal_amount"],
+            fee_maintenance_amount=previous_values["fee_maintenance_amount"],
+            salary_net_ceiling=previous_values["salary_net_ceiling"],
+        )
+    crud.upsert_settings_snapshot(
+        db,
+        contract_id=contract_id,
+        valid_from=effective_from_date,
+        hours_per_week=contract.hours_per_week,
+        weeks_per_year=contract.weeks_per_year,
+        hourly_rate=contract.hourly_rate,
+        days_per_week=contract.days_per_week,
+        majoration_threshold=contract.majoration_threshold,
+        majoration_rate=contract.majoration_rate,
+        fee_meal_amount=contract.fee_meal_amount,
+        fee_maintenance_amount=contract.fee_maintenance_amount,
+        salary_net_ceiling=contract.salary_net_ceiling,
+    )
     db.commit()
+    snapshots = crud.list_settings_snapshots(db, contract_id)
 
     return templates.TemplateResponse(
         "contract_settings.html",
@@ -415,7 +556,131 @@ def save_contract_settings(
             "title": "Parametres",
             "contract_id": contract_id,
             "contract": contract,
+            "snapshots": snapshots,
+            "effective_from": effective_from,
             "saved": True,
+        },
+    )
+
+
+@app.get("/contracts/{contract_id}/settings_snapshot", response_class=HTMLResponse)
+def edit_settings_snapshot(
+    contract_id: int,
+    request: Request,
+    valid_from: date,
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    snapshot = crud.get_settings_snapshot(
+        db, contract_id=contract_id, valid_from=valid_from
+    )
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    return templates.TemplateResponse(
+        "settings_snapshot_form.html",
+        {
+            "request": request,
+            "title": "Modifier snapshot",
+            "contract": contract,
+            "contract_id": contract_id,
+            "snapshot": snapshot,
+        },
+    )
+
+
+@app.post("/contracts/{contract_id}/settings_snapshot", response_class=HTMLResponse)
+def save_settings_snapshot(
+    contract_id: int,
+    request: Request,
+    valid_from: str = Form(...),
+    hours_per_week: str = Form(...),
+    weeks_per_year: str = Form(...),
+    hourly_rate: str = Form(...),
+    days_per_week: str | None = Form(None),
+    majoration_threshold: str | None = Form(None),
+    majoration_rate: str | None = Form(None),
+    fee_meal_amount: str | None = Form(None),
+    fee_maintenance_amount: str | None = Form(None),
+    salary_net_ceiling: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    valid_from_date = date_from_iso(valid_from)
+    snapshot = crud.get_settings_snapshot(
+        db, contract_id=contract_id, valid_from=valid_from_date
+    )
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    crud.upsert_settings_snapshot(
+        db,
+        contract_id=contract_id,
+        valid_from=valid_from_date,
+        hours_per_week=float(hours_per_week),
+        weeks_per_year=float(weeks_per_year),
+        hourly_rate=float(hourly_rate),
+        days_per_week=parse_optional_int(days_per_week),
+        majoration_threshold=parse_optional_float(majoration_threshold),
+        majoration_rate=parse_optional_float(majoration_rate),
+        fee_meal_amount=parse_optional_float(fee_meal_amount),
+        fee_maintenance_amount=parse_optional_float(fee_maintenance_amount),
+        salary_net_ceiling=parse_optional_float(salary_net_ceiling),
+    )
+    db.commit()
+
+    snapshot = crud.get_settings_snapshot(
+        db, contract_id=contract_id, valid_from=valid_from_date
+    )
+    return templates.TemplateResponse(
+        "settings_snapshot_form.html",
+        {
+            "request": request,
+            "title": "Modifier snapshot",
+            "contract": contract,
+            "contract_id": contract_id,
+            "snapshot": snapshot,
+            "saved": True,
+        },
+    )
+
+
+@app.post("/contracts/{contract_id}/settings_snapshot/delete", response_class=HTMLResponse)
+def delete_settings_snapshot(
+    contract_id: int,
+    request: Request,
+    valid_from: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    valid_from_date = date_from_iso(valid_from)
+    deleted = crud.delete_settings_snapshot(
+        db, contract_id=contract_id, valid_from=valid_from_date
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    db.commit()
+
+    snapshots = crud.list_settings_snapshots(db, contract_id)
+    return templates.TemplateResponse(
+        "contract_settings.html",
+        {
+            "request": request,
+            "title": "Parametres",
+            "contract_id": contract_id,
+            "contract": contract,
+            "snapshots": snapshots,
+            "effective_from": date.today().isoformat(),
+            "deleted": True,
         },
     )
 

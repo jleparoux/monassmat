@@ -10,6 +10,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Page synthese annuelle: `/contracts/{id}/summary/year?year=YYYY`
 - Page liste contrats: `/contracts`
 - Types de journee: travail, absence, conge sans solde, jour ferie
+- Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
 
 ## Import assmat-tracker
 - Script: `scripts/import_assmat_tracker.py`
