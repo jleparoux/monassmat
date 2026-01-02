@@ -4,13 +4,64 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Contrats</h1>
-    <p class="page-subtitle">Synthese rapide de tous les contrats disponibles.</p>
+    <p class="page-subtitle">Tableau de bord pour piloter les contrats et naviguer rapidement.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" data-quick-action="calendar" href="#">Calendrier actif</a>
+    <a class="btn" data-quick-action="year" href="#">Synthese annuelle</a>
+    <a class="btn" data-quick-action="settings" href="#">Parametres</a>
   </div>
 </div>
 
+<section class="dashboard-kpis">
+  <div class="card kpi-card">
+    <div class="kpi-label">Contrats actifs</div>
+    <div class="kpi-value">
+      {{ items | selectattr("is_active") | list | length }}
+    </div>
+    <div class="kpi-meta">sur {{ items | length }}</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Heures mensualisees (total)</div>
+    <div class="kpi-value">
+      {{ items | map(attribute="monthly_hours_theoretical") | sum | round(2) }} h
+    </div>
+    <div class="kpi-meta">cumul des contrats</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Salaire mensualise (total)</div>
+    <div class="kpi-value">
+      {{ items | map(attribute="monthly_salary_theoretical") | sum | round(2) }} €
+    </div>
+    <div class="kpi-meta">hors ajustements</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Contrats clos</div>
+    <div class="kpi-value">
+      {{ items | rejectattr("is_active") | list | length }}
+    </div>
+    <div class="kpi-meta">historique</div>
+  </div>
+</section>
+
+<section class="dashboard-toolbar">
+  <div class="toolbar-group">
+    <button class="filter-chip is-active" type="button" data-filter="all">Tous</button>
+    <button class="filter-chip" type="button" data-filter="active">Actifs</button>
+    <button class="filter-chip" type="button" data-filter="closed">Clos</button>
+  </div>
+  <div class="toolbar-group">
+    <button class="filter-chip" type="button" data-sort="salary">Tri: salaire</button>
+    <button class="filter-chip" type="button" data-sort="hours">Tri: heures</button>
+    <button class="filter-chip" type="button" data-sort="id">Tri: id</button>
+  </div>
+</section>
+
 <section class="contracts-grid">
   {% for item in items %}
-    <article class="card contract-card">
+    <article class="card contract-card" data-status="{{ "active" if item.is_active else "closed" }}"
+             data-salary="{{ item.monthly_salary_theoretical }}" data-hours="{{ item.monthly_hours_theoretical }}"
+             data-id="{{ item.id }}">
       <div class="card__header">
         <div>
           <div class="title">Contrat #{{ item.id }}</div>
@@ -23,6 +74,16 @@
         {% endif %}
       </div>
       <div class="card__body">
+        <div class="contract-highlight">
+          <div class="highlight-block">
+            <span class="label">Salaire mensualise</span>
+            <span class="value">{{ item.monthly_salary_theoretical | round(2) }} €</span>
+          </div>
+          <div class="highlight-block">
+            <span class="label">Heures mensualisees</span>
+            <span class="value">{{ item.monthly_hours_theoretical | round(2) }} h</span>
+          </div>
+        </div>
         <div class="summary-list">
           <div class="summary-row">
             <span class="label">Periode</span>
@@ -40,15 +101,6 @@
             <span class="label">Tarif horaire</span>
             <span class="value">{{ item.hourly_rate | round(2) }} €</span>
           </div>
-          <div class="divider"></div>
-          <div class="summary-row">
-            <span class="label">Heures mensualisees</span>
-            <span class="value">{{ item.monthly_hours_theoretical | round(2) }} h</span>
-          </div>
-          <div class="summary-row">
-            <span class="label">Salaire mensualise</span>
-            <span class="value">{{ item.monthly_salary_theoretical | round(2) }} €</span>
-          </div>
         </div>
       </div>
       <div class="card__footer contract-actions">
@@ -62,4 +114,8 @@
   {% endfor %}
 </section>
 
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/contracts.js"></script>
 {% endblock %}
