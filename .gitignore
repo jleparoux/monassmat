@@ -143,9 +143,13 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+data/
 
 # Database backups
 backups/
+
+# Postgres data directory (bind mount)
+data/
 
 # Spyder project settings
 .spyderproject

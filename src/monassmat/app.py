@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, time, timedelta
 import calendar
+import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -25,7 +26,22 @@ from .models import Child, Contract, WorkdayKind
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # .../monassmat/
-FRONTEND_DIR = BASE_DIR / "frontend"
+
+
+def resolve_frontend_dir() -> Path:
+    env_path = os.environ.get("FRONTEND_DIR")
+    candidates = []
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates.append(BASE_DIR / "frontend")
+    candidates.append(Path.cwd() / "frontend")
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+FRONTEND_DIR = resolve_frontend_dir()
 
 app = FastAPI(title="MonAssmat")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")

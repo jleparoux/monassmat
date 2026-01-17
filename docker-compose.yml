@@ -9,12 +9,24 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - monassmat_pgdata:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U monassmat -d monassmat"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-volumes:
-  monassmat_pgdata:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monassmat-app
+    environment:
+      DATABASE_URL: postgresql+psycopg://monassmat:monassmat@db:5432/monassmat
+      APP_NAME: MonAssmat
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
