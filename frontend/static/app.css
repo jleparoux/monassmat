@@ -29,6 +29,44 @@
     --assmat: #fbbf24;
     --today: #60a5fa;
   }
+
+  body { background: var(--bg); }
+  .topbar { background: #0b1220; }
+  .card { box-shadow: none; }
+  .card__footer { background: #0b1220; }
+  .btn,
+  .icon-btn {
+    background: #0f172a;
+    border-color: #1f2937;
+    color: var(--text);
+  }
+  .btn:hover,
+  .icon-btn:hover { background: #172554; border-color: #1d4ed8; }
+  .btn-secondary {
+    background: #111827;
+    border-color: #1f2937;
+    color: var(--text);
+  }
+  .btn-secondary:hover { background: #0f172a; }
+  .month-picker__panel { background: #0b1220; border-color: #1f2937; }
+  .month-picker__month:hover { background: #0f172a; border-color: #1d4ed8; }
+  .month-picker__month.is-active { background: #1e3a8a; color: #e2e8f0; }
+  .month-picker__today { background: #0f172a; }
+  .cell {
+    background: #0b1220;
+    border-color: #1f2937;
+  }
+  .cell:hover { background: #172554; border-color: #1d4ed8; }
+  .cell--muted { background: #0b1220; opacity: 0.5; }
+  .cell--weekend { background: #0b1220; color: #94a3b8; }
+  .cell--work { background: #052e1c; }
+  .cell--absence { background: #3a1d0b; }
+  .cell--assmat { background: #3a2a0b; }
+  .cell--unpaid { background: #3a0b0b; }
+  .cell--holiday { background: #2a0b3a; }
+  .kpi { background: #0b1220; border-color: #1f2937; }
+  .divider { background: #1f2937; }
+  .link { color: #93c5fd; }
 }
 
 * { box-sizing: border-box; }
