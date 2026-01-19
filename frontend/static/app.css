@@ -362,12 +362,12 @@ a { color: inherit; }
   .selection-controls { justify-content: center; }
   .legend { gap: 8px; font-size: 11px; }
   .grid { gap: 4px; }
-  .grid--days { grid-auto-rows: 84px; }
+  .grid--days { grid-auto-rows: 100px; }
   .cell { padding: 6px; border-radius: 8px; gap: 4px; }
   .daynum { font-size: 12px; }
-  .cell__meta { font-size: 9px; }
-  .cell__hours { font-size: 11px; }
-  .cell__time { font-size: 10px; }
+  .cell__meta { display: none; }
+  .cell__hours { font-size: 12px; white-space: normal; line-height: 1.2; }
+  .cell__time { display: none; }
   .fee-indicator { top: 4px; right: 4px; }
   .fee-dot { width: 6px; height: 6px; }
 }
