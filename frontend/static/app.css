@@ -14,6 +14,23 @@
   --cell-height: 110px;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --card: #111827;
+    --muted: #94a3b8;
+    --text: #e2e8f0;
+    --line: #1f2937;
+    --accent: #60a5fa;
+    --work: #34d399;
+    --absence: #fb923c;
+    --unpaid: #f87171;
+    --holiday: #a78bfa;
+    --assmat: #fbbf24;
+    --today: #60a5fa;
+  }
+}
+
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
