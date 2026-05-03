@@ -40,7 +40,7 @@ class PaidLeaveMethod(str, Enum):
 
 class ContractYearMode(str, Enum):
     COMPLETE = "complete"
-    PARTIAL = "partial"
+    INCOMPLETE = "incomplete"
 
 
 # ---------------------------------------------------------------------------
