@@ -5,7 +5,7 @@ import pytest
 
 from monassmat.app import summarize_period
 from monassmat.calculations import ContractFacts, contract_monthly_hours
-from monassmat.models import WorkdayKind
+from monassmat.models import ContractYearMode, WorkdayKind
 
 
 @dataclass
@@ -21,6 +21,7 @@ class DummyContract:
     fee_meal_amount: float | None
     fee_maintenance_amount: float | None
     salary_net_ceiling: float | None
+    year_mode: ContractYearMode = ContractYearMode.COMPLETE
 
 
 @dataclass
@@ -44,6 +45,7 @@ class DummySnapshot:
     fee_meal_amount: float | None
     fee_maintenance_amount: float | None
     salary_net_ceiling: float | None
+    year_mode: ContractYearMode = ContractYearMode.COMPLETE
 
 
 def test_settings_history_affects_salary_and_fees():

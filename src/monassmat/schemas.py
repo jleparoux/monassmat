@@ -41,3 +41,7 @@ class MonthlySummaryOut(BaseModel):
     unpaid_leave_deduction: float = 0.0
     total_estimated: float = 0.0
     average_hours_per_day: float = 0.0
+    paid_leave_days_annual: int = 0
+    paid_leave_mode: str = ""
+    paid_leave_days_taken: int = 0
+    paid_leave_days_balance: int = 0

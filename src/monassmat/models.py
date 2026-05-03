@@ -38,6 +38,11 @@ class PaidLeaveMethod(str, Enum):
     DIXIEME = "dixieme"
 
 
+class ContractYearMode(str, Enum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------

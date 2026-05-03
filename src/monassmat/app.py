@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -47,20 +47,26 @@ app = FastAPI(title="MonAssmat")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=str(FRONTEND_DIR / "templates"))
 
+
+@app.get("/")
+def home():
+    return RedirectResponse(url="/contracts", status_code=302)
+
+
 date_from_iso = date.fromisoformat
 MONTH_NAMES = [
     "Janvier",
-    "Fevrier",
+    "Février",
     "Mars",
     "Avril",
     "Mai",
     "Juin",
     "Juillet",
-    "Aout",
+    "Août",
     "Septembre",
     "Octobre",
     "Novembre",
-    "Decembre",
+    "Décembre",
 ]
 
 
