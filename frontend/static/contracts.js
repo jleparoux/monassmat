@@ -49,6 +49,7 @@
       return Number(a.dataset.id || 0) - Number(b.dataset.id || 0);
     });
     sorted.forEach((card) => grid.appendChild(card));
+    updateQuickActions();
   }
 
   filterButtons.forEach((btn) => {
