@@ -95,6 +95,18 @@ a { color: inherit; }
 .topbar__inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { font-weight: 600; letter-spacing: 0.2px; }
 .chip { border: 1px solid var(--line); padding: 6px 10px; border-radius: 999px; color: var(--muted); font-size: 12px; }
+.topbar__nav {
+  display: flex;
+  gap: 1rem;
+}
+.topbar__nav a {
+  color: var(--text-muted, #666);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+.topbar__nav a:hover {
+  color: var(--text, #000);
+}
 
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
 .page-title { margin: 0; font-size: 22px; font-weight: 600; }

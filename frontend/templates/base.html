@@ -14,9 +14,14 @@
   <header class="topbar">
     <div class="container topbar__inner">
       <a class="brand" href="/contracts">MonAssmat</a>
+      <nav class="topbar__nav">
+        <a href="/contracts">Contrats</a>
+        <a href="/children">Enfants</a>
+      </nav>
       {% if contract_id %}
         <div class="topbar__meta">
-          <span class="chip">Contract #{{ contract_id }}</span>
+          <a class="chip" href="/contracts">← Contrats</a>
+          <span class="chip">{% if contract_name %}{{ contract_name }}{% else %}Contrat #{{ contract_id }}{% endif %}</span>
         </div>
       {% endif %}
     </div>
