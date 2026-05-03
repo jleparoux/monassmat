@@ -261,3 +261,13 @@ def paid_leave_value(
         return dixieme_reference_amount
 
     raise ValueError(f"Unknown method: {method}")
+
+
+def parse_holidays_response(data: dict[str, str]) -> list[tuple[date, str]]:
+    result = []
+    for date_str, name in data.items():
+        try:
+            result.append((date.fromisoformat(date_str), name))
+        except ValueError:
+            continue
+    return sorted(result, key=lambda x: x[0])

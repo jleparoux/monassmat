@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Enfants</h1>
+    <p class="page-subtitle">Gérez les enfants et leurs contrats.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="/children/new">Nouvel enfant</a>
+  </div>
+</div>
+
+<section class="contracts-grid">
+  {% for child in children %}
+  <article class="card">
+    <div class="card__header">
+      <div>
+        <div class="title">{{ child.name }}</div>
+        <div class="muted">Né(e) le {{ child.birth_date }}</div>
+      </div>
+    </div>
+    <div class="card__body">
+      {% if child.contracts %}
+        <div class="summary-list">
+          {% for contract in child.contracts %}
+          <div class="summary-row">
+            <span class="label">
+              <a href="/contracts/{{ contract.id }}/calendar">
+                {{ contract.name or "Contrat #" ~ contract.id }}
+              </a>
+            </span>
+            <span class="value">
+              {% if contract.end_date is none or contract.end_date >= today %}
+                <span class="badge badge--ok">Actif</span>
+              {% else %}
+                <span class="badge">Clos</span>
+              {% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="muted">Aucun contrat.</div>
+      {% endif %}
+    </div>
+    <div class="card__footer contract-actions">
+      <a class="btn btn-secondary" href="/children/{{ child.id }}">Modifier</a>
+      <a class="btn btn-primary" href="/contracts/new?child_id={{ child.id }}">Nouveau contrat</a>
+    </div>
+  </article>
+  {% else %}
+    <div class="empty">Aucun enfant enregistré. <a href="/children/new">Créer le premier</a>.</div>
+  {% endfor %}
+</section>
+
+{% endblock %}

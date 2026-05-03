@@ -5,7 +5,7 @@ from datetime import date, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Contract, ContractSettingsSnapshot, Workday, WorkdayKind
+from .models import Child, Contract, ContractSettingsSnapshot, PaidLeave, PaidLeaveMethod, Payment, PaymentKind, Workday, WorkdayKind
 
 
 def get_contract(db: Session, contract_id: int) -> Contract | None:
@@ -154,4 +154,122 @@ def delete_workday(db: Session, *, contract_id: int, day: date) -> bool:
         return False
 
     db.delete(existing)
+    return True
+
+
+def list_children(db: Session) -> list[Child]:
+    stmt = select(Child).order_by(Child.name.asc())
+    return list(db.scalars(stmt).all())
+
+
+def get_child(db: Session, child_id: int) -> Child | None:
+    return db.get(Child, child_id)
+
+
+def create_child(db: Session, *, name: str, birth_date: date) -> Child:
+    child = Child(name=name, birth_date=birth_date)
+    db.add(child)
+    return child
+
+
+def update_child(
+    db: Session, *, child_id: int, name: str, birth_date: date
+) -> Child | None:
+    child = get_child(db, child_id)
+    if not child:
+        return None
+    child.name = name
+    child.birth_date = birth_date
+    return child
+
+
+def list_paid_leaves(db: Session, contract_id: int) -> list[PaidLeave]:
+    stmt = (
+        select(PaidLeave)
+        .where(PaidLeave.contract_id == contract_id)
+        .order_by(PaidLeave.period_start.desc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def get_paid_leave(
+    db: Session, *, contract_id: int, period_start: date, period_end: date
+) -> PaidLeave | None:
+    stmt = select(PaidLeave).where(
+        PaidLeave.contract_id == contract_id,
+        PaidLeave.period_start == period_start,
+        PaidLeave.period_end == period_end,
+    )
+    return db.scalar(stmt)
+
+
+def upsert_paid_leave(
+    db: Session,
+    *,
+    contract_id: int,
+    period_start: date,
+    period_end: date,
+    days_acquired: float,
+    days_taken: float,
+    method: PaidLeaveMethod,
+    amount_paid: float | None,
+) -> PaidLeave:
+    existing = get_paid_leave(
+        db, contract_id=contract_id, period_start=period_start, period_end=period_end
+    )
+    if existing:
+        existing.days_acquired = days_acquired
+        existing.days_taken = days_taken
+        existing.method = method
+        existing.amount_paid = amount_paid
+        return existing
+    pl = PaidLeave(
+        contract_id=contract_id,
+        period_start=period_start,
+        period_end=period_end,
+        days_acquired=days_acquired,
+        days_taken=days_taken,
+        method=method,
+        amount_paid=amount_paid,
+    )
+    db.add(pl)
+    return pl
+
+
+def list_payments(db: Session, contract_id: int) -> list[Payment]:
+    stmt = (
+        select(Payment)
+        .where(Payment.contract_id == contract_id)
+        .order_by(Payment.paid_at.desc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def create_payment(
+    db: Session,
+    *,
+    contract_id: int,
+    period_start: date,
+    period_end: date,
+    amount: float,
+    paid_at: date,
+    kind: PaymentKind,
+) -> Payment:
+    payment = Payment(
+        contract_id=contract_id,
+        period_start=period_start,
+        period_end=period_end,
+        amount=amount,
+        paid_at=paid_at,
+        kind=kind,
+    )
+    db.add(payment)
+    return payment
+
+
+def delete_payment(db: Session, payment_id: int) -> bool:
+    payment = db.get(Payment, payment_id)
+    if not payment:
+        return False
+    db.delete(payment)
     return True

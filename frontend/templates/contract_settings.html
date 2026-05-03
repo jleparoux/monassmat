@@ -129,4 +129,32 @@
   </div>
 </section>
 
+
+<section class="card">
+  <div class="card__header">
+    <div class="title">Jours fériés</div>
+  </div>
+  <div class="card__body">
+    {% if holidays_imported is defined %}
+      <div class="notice notice--ok">
+        {{ holidays_imported }} jour(s) importé(s), {{ holidays_skipped }} déjà saisi(s).
+      </div>
+    {% endif %}
+    {% if holidays_error is defined %}
+      <div class="notice notice--error">{{ holidays_error }}</div>
+    {% endif %}
+    <form method="post" action="/contracts/{{ contract_id }}/holidays/import">
+      <div class="field-group">
+        <label class="field">
+          <span>Année</span>
+          <input name="year" type="number" value="{{ today_year }}" min="2020" max="2030" required />
+        </label>
+        <div class="actions" style="align-self: flex-end;">
+          <button class="btn" type="submit">Synchroniser les jours fériés</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
 {% endblock %}

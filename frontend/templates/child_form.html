@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">{% if child %}Modifier l'enfant{% else %}Nouvel enfant{% endif %}</h1>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="/children">Retour aux enfants</a>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card__body">
+    {% if saved %}
+      <div class="notice notice--ok">Enregistré.</div>
+    {% endif %}
+    <form method="post">
+      <div class="field-group">
+        <label class="field">
+          <span>Nom de l'enfant</span>
+          <input name="name" type="text" value="{{ child.name if child else '' }}" required />
+        </label>
+        <label class="field">
+          <span>Date de naissance</span>
+          <input name="birth_date" type="date" value="{{ child.birth_date if child else '' }}" required />
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

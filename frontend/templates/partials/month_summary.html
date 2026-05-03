@@ -68,5 +68,28 @@
       <span class="label">Total estime</span>
       <span class="value highlight">{{ total_estimated | round(2) }} €</span>
     </div>
+    <div class="divider"></div>
+    <div class="summary-row">
+      <span class="label">Congés payés</span>
+      <span class="value">
+        <a href="/contracts/{{ contract_id }}/paid-leave">Voir le suivi →</a>
+      </span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Paiements</span>
+      <span class="value">
+        <a href="/contracts/{{ contract_id }}/payments?period_start={{ period_start }}&period_end={{ period_end }}&amount={{ total_estimated | round(2) }}">
+          Enregistrer ce mois →
+        </a>
+      </span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Export</span>
+      <span class="value">
+        <a href="/contracts/{{ contract_id }}/export/monthly.csv?start={{ period_start }}&end={{ period_end }}">
+          Télécharger CSV mensuel
+        </a>
+      </span>
+    </div>
   </div>
 </div>

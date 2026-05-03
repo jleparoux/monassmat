@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from datetime import date, time, timedelta
 import calendar
+import csv
+import io
+import json
 import os
+import urllib.request
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -15,14 +19,19 @@ from . import crud
 from .calculations import ContractFacts, WorkdayFacts
 from .calculations import WorkdayKind as CalcWorkdayKind
 from .calculations import (
+    Period,
+    PaidLeaveMethod,
     contract_monthly_hours,
     contract_monthly_salary,
     hours_between_times,
+    paid_leave_acquired_days_v1,
+    paid_leave_value,
+    parse_holidays_response,
     unpaid_leave_deduction,
     workday_totals,
 )
 from .db import get_db, session_scope
-from .models import Child, Contract, WorkdayKind
+from .models import Child, Contract, ContractYearMode, WorkdayKind
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # .../monassmat/
@@ -303,6 +312,12 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
         )
 
 
+def fetch_holidays_api(year: int) -> dict[str, str]:
+    url = f"https://calendrier.api.gouv.fr/jours-feries/metropole/{year}.json"
+    with urllib.request.urlopen(url, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -456,8 +471,98 @@ def build_year_summary(contract_id: int, year: int) -> dict:
         }
 
 
+@app.get("/contracts/{contract_id}/export/monthly.csv")
+def export_monthly_csv(contract_id: int, start: date, end: date):
+    summary = build_month_summary(contract_id, start, end)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Période", "Heures contractuelles", "Heures réelles",
+        "Heures majorées", "Jours travaillés", "Jours absences",
+        "Jours congés assmat", "Jours sans solde", "Jours fériés",
+        "Salaire de base", "Majoration", "Frais repas", "Frais entretien",
+        "Déduction sans solde", "Total estimé",
+    ])
+    writer.writerow([
+        f"{summary.period_start} → {summary.period_end}",
+        round(summary.monthly_hours_theoretical, 2),
+        round(summary.hours_real, 2),
+        round(summary.hours_majorated, 2),
+        summary.work_days,
+        summary.absence_days,
+        summary.assmat_leave_days,
+        summary.unpaid_leave_days,
+        summary.holiday_days,
+        round(summary.salary_base, 2),
+        round(summary.salary_majoration, 2),
+        round(summary.fee_meal_total, 2),
+        round(summary.fee_maintenance_total, 2),
+        round(summary.unpaid_leave_deduction, 2),
+        round(summary.total_estimated, 2),
+    ])
+
+    filename = f"monassmat_{start.strftime('%Y-%m')}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.get("/contracts/{contract_id}/export/yearly.csv")
+def export_yearly_csv(contract_id: int, year: int):
+    data = build_year_summary(contract_id, year)
+    totals = data["totals"]
+    monthly_items = data["monthly_items"]
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Mois", "Heures réelles", "Jours travaillés", "Jours absences",
+        "Salaire de base", "Majoration", "Frais repas", "Frais entretien",
+        "Déduction sans solde", "Total estimé",
+    ])
+    for item in monthly_items:
+        s = item["summary"]
+        writer.writerow([
+            item["label"],
+            round(s.hours_real, 2),
+            s.work_days,
+            s.absence_days,
+            round(s.salary_base, 2),
+            round(s.salary_majoration, 2),
+            round(s.fee_meal_total, 2),
+            round(s.fee_maintenance_total, 2),
+            round(s.unpaid_leave_deduction, 2),
+            round(s.total_estimated, 2),
+        ])
+    writer.writerow([
+        "TOTAL",
+        round(totals["hours_real"], 2),
+        totals["work_days"],
+        totals["absence_days"],
+        round(totals["salary_base"], 2),
+        round(totals["salary_majoration"], 2),
+        round(totals["fee_meal_total"], 2),
+        round(totals["fee_maintenance_total"], 2),
+        round(totals["unpaid_leave_deduction"], 2),
+        round(totals["total_estimated"], 2),
+    ])
+
+    filename = f"monassmat_{year}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @app.get("/contracts/{contract_id}/calendar", response_class=HTMLResponse)
-def calendar_page(contract_id: int, request: Request, initial_date: date | None = None):
+def calendar_page(contract_id: int, request: Request, initial_date: date | None = None, db: Session = Depends(get_db)):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
     if initial_date is None:
         initial_date = date.today()
     return templates.TemplateResponse(
@@ -466,6 +571,7 @@ def calendar_page(contract_id: int, request: Request, initial_date: date | None 
             "request": request,
             "title": "Calendrier",
             "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
             "initial_date": initial_date.isoformat(),
         },
     )
@@ -484,9 +590,11 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
             "request": request,
             "title": "Parametres",
             "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
             "contract": contract,
             "snapshots": snapshots,
             "effective_from": date.today().isoformat(),
+            "today_year": date.today().year,
         },
     )
 
@@ -579,9 +687,11 @@ def save_contract_settings(
             "request": request,
             "title": "Parametres",
             "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
             "contract": contract,
             "snapshots": snapshots,
             "effective_from": effective_from,
+            "today_year": date.today().year,
             "saved": True,
         },
     )
@@ -611,6 +721,7 @@ def edit_settings_snapshot(
             "title": "Modifier snapshot",
             "contract": contract,
             "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
             "snapshot": snapshot,
         },
     )
@@ -657,6 +768,7 @@ def save_settings_snapshot(
                     "title": "Modifier snapshot",
                     "contract": contract,
                     "contract_id": contract_id,
+                    "contract_name": contract.name or f"Contrat #{contract_id}",
                     "snapshot": snapshot,
                     "error": "Un snapshot existe deja a cette date.",
                 },
@@ -694,6 +806,7 @@ def save_settings_snapshot(
             "title": "Modifier snapshot",
             "contract": contract,
             "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
             "snapshot": snapshot,
             "saved": True,
         },
@@ -726,10 +839,79 @@ def delete_settings_snapshot(
             "request": request,
             "title": "Parametres",
             "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
             "contract": contract,
             "snapshots": snapshots,
             "effective_from": date.today().isoformat(),
+            "today_year": date.today().year,
             "deleted": True,
+        },
+    )
+
+
+@app.post("/contracts/{contract_id}/holidays/import", response_class=HTMLResponse)
+def import_holidays(
+    contract_id: int,
+    request: Request,
+    year: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    snapshots = crud.list_settings_snapshots(db, contract_id)
+
+    try:
+        data = fetch_holidays_api(year)
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "contract_settings.html",
+            {
+                "request": request,
+                "title": "Parametres",
+                "contract_id": contract_id,
+                "contract_name": contract.name or f"Contrat #{contract_id}",
+                "contract": contract,
+                "snapshots": snapshots,
+                "effective_from": date.today().isoformat(),
+                "today_year": date.today().year,
+                "holidays_error": f"Erreur lors de la récupération des jours fériés : {exc}",
+            },
+        )
+
+    holidays = parse_holidays_response(data)
+    imported = 0
+    skipped = 0
+    for day, _name in holidays:
+        existing = crud.list_workdays(db, contract_id, day, day)
+        if existing:
+            skipped += 1
+            continue
+        crud.upsert_workday(
+            db,
+            contract_id=contract_id,
+            day=day,
+            hours=0.0,
+            kind=CalcWorkdayKind.HOLIDAY,
+        )
+        imported += 1
+    db.commit()
+
+    snapshots = crud.list_settings_snapshots(db, contract_id)
+    return templates.TemplateResponse(
+        "contract_settings.html",
+        {
+            "request": request,
+            "title": "Parametres",
+            "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
+            "contract": contract,
+            "snapshots": snapshots,
+            "effective_from": date.today().isoformat(),
+            "today_year": date.today().year,
+            "holidays_imported": imported,
+            "holidays_skipped": skipped,
         },
     )
 
@@ -801,6 +983,7 @@ def month_summary(
         "partials/month_summary.html",
         {
             "request": request,
+            "contract_id": contract_id,
             **summary.model_dump(),
         },
     )
@@ -850,6 +1033,277 @@ def year_summary_page(
     )
 
 
+def _paid_leave_year_bounds(ref_date: date) -> tuple[date, date]:
+    """Return June 1 → May 31 bounds that contain ref_date."""
+    if ref_date.month >= 6:
+        start = date(ref_date.year, 6, 1)
+        end = date(ref_date.year + 1, 5, 31)
+    else:
+        start = date(ref_date.year - 1, 6, 1)
+        end = date(ref_date.year, 5, 31)
+    return start, end
+
+
+@app.get("/contracts/{contract_id}/paid-leave", response_class=HTMLResponse)
+def paid_leave_page(
+    contract_id: int,
+    request: Request,
+    year: int | None = None,
+    saved: bool = False,
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    target_year = year or date.today().year
+    period_start, period_end = _paid_leave_year_bounds(date(target_year, 6, 1))
+
+    workdays = crud.list_workdays(db, contract_id, period_start, period_end)
+
+    # Days acquired: use v1 heuristic counting NORMAL workdays
+    wf_list = [
+        WorkdayFacts(day=wd.date, hours=wd.hours, kind=CalcWorkdayKind(wd.kind.value))
+        for wd in workdays
+    ]
+    acquisition_period = Period(start=period_start, end=period_end)
+    days_acquired = round(paid_leave_acquired_days_v1(wf_list, acquisition_period), 2)
+
+    # Days taken: count ASSMAT_LEAVE workdays
+    days_taken = sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE)
+
+    # Get applicable settings for amount computation
+    snapshots = crud.list_settings_snapshots(db, contract_id)
+    settings = build_settings_timeline(contract, snapshots)
+    # Use most recent snapshot valid for this period (or first)
+    applicable = settings[0]
+    for snap in settings:
+        if snap["valid_from"] <= period_start:
+            applicable = snap
+    daily_reference_hours = (
+        applicable["hours_per_week"] / applicable["days_per_week"]
+        if applicable.get("days_per_week") and applicable["days_per_week"] > 0
+        else applicable["hours_per_week"] / 5.0
+    )
+    hourly_rate = applicable["hourly_rate"]
+
+    amount_maintien = paid_leave_value(
+        method=PaidLeaveMethod.MAINTIEN,
+        days_taken=float(days_taken),
+        daily_reference_hours=daily_reference_hours,
+        hourly_rate=hourly_rate,
+    ) if days_taken > 0 else 0.0
+
+    history = crud.list_paid_leaves(db, contract_id)
+
+    return templates.TemplateResponse(
+        "paid_leave.html",
+        {
+            "request": request,
+            "title": "Congés payés",
+            "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
+            "period_start": period_start,
+            "period_end": period_end,
+            "paid_leave_mode": "Annuel (juin → mai)",
+            "days_acquired": days_acquired,
+            "days_taken": days_taken,
+            "amount_maintien": amount_maintien,
+            "history": history,
+            "saved": saved,
+        },
+    )
+
+
+@app.get("/contracts/{contract_id}/payments", response_class=HTMLResponse)
+def payments_page(
+    contract_id: int,
+    request: Request,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    amount: float | None = None,
+    saved: bool = False,
+    deleted: bool = False,
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    payments = crud.list_payments(db, contract_id)
+    return templates.TemplateResponse(
+        "payments.html",
+        {
+            "request": request,
+            "title": "Paiements",
+            "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
+            "payments": payments,
+            "today": date.today().isoformat(),
+            "prefill_period_start": period_start.isoformat() if period_start else None,
+            "prefill_period_end": period_end.isoformat() if period_end else None,
+            "prefill_amount": amount,
+            "saved": saved,
+            "deleted": deleted,
+        },
+    )
+
+
+@app.post("/contracts/{contract_id}/payments", response_class=HTMLResponse)
+def create_payment_route(
+    contract_id: int,
+    request: Request,
+    period_start: str = Form(...),
+    period_end: str = Form(...),
+    amount: str = Form(...),
+    paid_at: str = Form(...),
+    kind: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from .models import PaymentKind
+
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    crud.create_payment(
+        db,
+        contract_id=contract_id,
+        period_start=date_from_iso(period_start),
+        period_end=date_from_iso(period_end),
+        amount=float(amount),
+        paid_at=date_from_iso(paid_at),
+        kind=PaymentKind(kind),
+    )
+    db.commit()
+    return RedirectResponse(url=f"/contracts/{contract_id}/payments?saved=1", status_code=303)
+
+
+@app.post("/contracts/{contract_id}/payments/{payment_id}/delete", response_class=HTMLResponse)
+def delete_payment_route(
+    contract_id: int,
+    payment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    deleted = crud.delete_payment(db, payment_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Paiement introuvable")
+    db.commit()
+    return RedirectResponse(url=f"/contracts/{contract_id}/payments?deleted=1", status_code=303)
+
+
+@app.post("/contracts/{contract_id}/paid-leave/record", response_class=HTMLResponse)
+def record_paid_leave(
+    contract_id: int,
+    period_start: str = Form(...),
+    period_end: str = Form(...),
+    method: str = Form(...),
+    amount_paid: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    period_start_date = date_from_iso(period_start)
+    period_end_date = date_from_iso(period_end)
+
+    workdays = crud.list_workdays(db, contract_id, period_start_date, period_end_date)
+
+    wf_list = [
+        WorkdayFacts(day=wd.date, hours=wd.hours, kind=CalcWorkdayKind(wd.kind.value))
+        for wd in workdays
+    ]
+    acquisition_period = Period(start=period_start_date, end=period_end_date)
+    days_acquired = round(paid_leave_acquired_days_v1(wf_list, acquisition_period), 2)
+    days_taken = float(sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE))
+
+    paid_leave_method = PaidLeaveMethod(method)
+
+    crud.upsert_paid_leave(
+        db,
+        contract_id=contract_id,
+        period_start=period_start_date,
+        period_end=period_end_date,
+        days_acquired=days_acquired,
+        days_taken=days_taken,
+        method=paid_leave_method,
+        amount_paid=float(amount_paid),
+    )
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/contracts/{contract_id}/paid-leave?saved=true",
+        status_code=302,
+    )
+
+
+@app.get("/children", response_class=HTMLResponse)
+def list_children_page(request: Request, db: Session = Depends(get_db)):
+    children = crud.list_children(db)
+    return templates.TemplateResponse(
+        "children.html",
+        {
+            "request": request,
+            "title": "Enfants",
+            "children": children,
+            "today": date.today(),
+        },
+    )
+
+
+@app.get("/children/new", response_class=HTMLResponse)
+def new_child_page(request: Request):
+    return templates.TemplateResponse(
+        "child_form.html",
+        {"request": request, "title": "Nouvel enfant", "child": None},
+    )
+
+
+@app.post("/children/new", response_class=HTMLResponse)
+def create_child_route(
+    request: Request,
+    name: str = Form(...),
+    birth_date: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    child = crud.create_child(db, name=name.strip(), birth_date=date_from_iso(birth_date))
+    db.commit()
+    return templates.TemplateResponse(
+        "child_form.html",
+        {"request": request, "title": "Nouvel enfant", "child": child, "saved": True},
+    )
+
+
+@app.get("/children/{child_id}", response_class=HTMLResponse)
+def edit_child_page(child_id: int, request: Request, db: Session = Depends(get_db)):
+    child = crud.get_child(db, child_id)
+    if not child:
+        raise HTTPException(status_code=404, detail="Enfant introuvable")
+    return templates.TemplateResponse(
+        "child_form.html",
+        {"request": request, "title": "Modifier l'enfant", "child": child},
+    )
+
+
+@app.post("/children/{child_id}", response_class=HTMLResponse)
+def update_child_route(
+    child_id: int,
+    request: Request,
+    name: str = Form(...),
+    birth_date: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    child = crud.update_child(db, child_id=child_id, name=name.strip(), birth_date=date_from_iso(birth_date))
+    if not child:
+        raise HTTPException(status_code=404, detail="Enfant introuvable")
+    db.commit()
+    return templates.TemplateResponse(
+        "child_form.html",
+        {"request": request, "title": "Modifier l'enfant", "child": child, "saved": True},
+    )
+
+
 @app.get("/contracts", response_class=HTMLResponse)
 def contracts_summary(request: Request, db: Session = Depends(get_db)):
     contracts = crud.list_contracts(db)
@@ -888,12 +1342,16 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/contracts/new", response_class=HTMLResponse)
-def new_contract(request: Request):
+def new_contract(request: Request, child_id: int | None = None, db: Session = Depends(get_db)):
+    children = crud.list_children(db)
     return templates.TemplateResponse(
         "contract_new.html",
         {
             "request": request,
             "title": "Nouveau contrat",
+            "year_modes": [m.value for m in ContractYearMode],
+            "children": children,
+            "selected_child_id": child_id,
         },
     )
 
@@ -902,12 +1360,14 @@ def new_contract(request: Request):
 def create_contract(
     request: Request,
     contract_name: str | None = Form(None),
-    child_name: str = Form(...),
-    child_birth_date: str = Form(...),
+    child_id: str | None = Form(None),
+    child_name: str | None = Form(None),
+    child_birth_date: str | None = Form(None),
     start_date: str = Form(...),
     end_date: str | None = Form(None),
     hours_per_week: str = Form(...),
     weeks_per_year: str = Form(...),
+    year_mode: str = Form(...),
     hourly_rate: str = Form(...),
     days_per_week: str | None = Form(None),
     majoration_threshold: str | None = Form(None),
@@ -917,10 +1377,15 @@ def create_contract(
     salary_net_ceiling: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    child = Child(
-        name=child_name.strip(),
-        birth_date=date_from_iso(child_birth_date),
-    )
+    if child_id:
+        child = crud.get_child(db, int(child_id))
+        if not child:
+            raise HTTPException(status_code=404, detail="Enfant introuvable")
+    else:
+        if not child_name or not child_birth_date:
+            raise HTTPException(status_code=400, detail="Nom et date de naissance requis")
+        child = crud.create_child(db, name=child_name.strip(), birth_date=date_from_iso(child_birth_date))
+
     contract = Contract(
         child=child,
         name=contract_name.strip() if contract_name else None,
@@ -928,6 +1393,7 @@ def create_contract(
         end_date=date_from_iso(end_date) if end_date else None,
         hours_per_week=float(hours_per_week),
         weeks_per_year=float(weeks_per_year),
+        year_mode=ContractYearMode(year_mode),
         hourly_rate=float(hourly_rate),
         days_per_week=parse_optional_int(days_per_week),
         majoration_threshold=parse_optional_float(majoration_threshold),
@@ -936,7 +1402,6 @@ def create_contract(
         fee_maintenance_amount=parse_optional_float(fee_maintenance_amount),
         salary_net_ceiling=parse_optional_float(salary_net_ceiling),
     )
-    db.add(child)
     db.add(contract)
     db.flush()
 
@@ -956,6 +1421,7 @@ def create_contract(
     )
     db.commit()
 
+    children = crud.list_children(db)
     return templates.TemplateResponse(
         "contract_new.html",
         {
@@ -963,6 +1429,9 @@ def create_contract(
             "title": "Nouveau contrat",
             "saved": True,
             "contract_id": contract.id,
+            "year_modes": [m.value for m in ContractYearMode],
+            "children": children,
+            "selected_child_id": None,
         },
     )
 

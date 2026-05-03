@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Nouveau contrat</h1>
-    <p class="page-subtitle">Cree un enfant et son contrat en une seule saisie.</p>
+    <p class="page-subtitle">Associez un enfant existant ou créez-en un nouveau.</p>
   </div>
   <div class="page-actions">
     <a class="btn btn-secondary" href="/contracts">Retour aux contrats</a>
@@ -17,27 +17,43 @@
 <section class="card">
   <div class="card__body">
     {% if saved %}
-      <div class="notice notice--ok">Contrat cree.</div>
+      <div class="notice notice--ok">Contrat créé.</div>
     {% endif %}
     <form method="post" action="/contracts/new">
       <label class="field">
         <span>Nom du contrat</span>
         <input name="contract_name" type="text" />
       </label>
-      <div class="field-group">
-        <label class="field">
-          <span>Nom de l'enfant</span>
-          <input name="child_name" type="text" required />
-        </label>
-        <label class="field">
-          <span>Date de naissance</span>
-          <input name="child_birth_date" type="date" required />
-        </label>
+
+      <label class="field">
+        <span>Enfant</span>
+        <select name="child_id" id="child-select">
+          <option value="">— Créer un nouvel enfant —</option>
+          {% for child in children %}
+            <option value="{{ child.id }}"
+              {% if selected_child_id == child.id %}selected{% endif %}>
+              {{ child.name }} (né(e) le {{ child.birth_date }})
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div id="new-child-fields">
+        <div class="field-group">
+          <label class="field">
+            <span>Nom de l'enfant</span>
+            <input name="child_name" type="text" />
+          </label>
+          <label class="field">
+            <span>Date de naissance</span>
+            <input name="child_birth_date" type="date" />
+          </label>
+        </div>
       </div>
 
       <div class="field-group">
         <label class="field">
-          <span>Date de debut</span>
+          <span>Date de début</span>
           <input name="start_date" type="date" required />
         </label>
         <label class="field">
@@ -56,6 +72,15 @@
           <input name="weeks_per_year" type="number" step="0.01" required />
         </label>
       </div>
+
+      <label class="field">
+        <span>Mode d'année</span>
+        <select name="year_mode" required>
+          {% for mode in year_modes %}
+            <option value="{{ mode }}" {% if mode == "complete" %}selected{% endif %}>{{ mode }}</option>
+          {% endfor %}
+        </select>
+      </label>
 
       <label class="field">
         <span>Tarif horaire</span>
@@ -96,10 +121,29 @@
       </div>
 
       <div class="actions">
-        <button class="btn btn-primary" type="submit">Creer le contrat</button>
+        <button class="btn btn-primary" type="submit">Créer le contrat</button>
       </div>
     </form>
   </div>
 </section>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var sel = document.getElementById('child-select');
+    var newFields = document.getElementById('new-child-fields');
+    var inputs = newFields.querySelectorAll('input');
+
+    function toggle() {
+      var isNew = sel.value === '';
+      newFields.style.display = isNew ? '' : 'none';
+      inputs.forEach(function (i) { i.required = isNew; });
+    }
+
+    sel.addEventListener('change', toggle);
+    toggle();
+  })();
+</script>
 {% endblock %}
