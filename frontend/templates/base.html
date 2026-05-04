@@ -7,6 +7,10 @@
   <title>{{ title or "MonAssmat" }}</title>
 
   <link rel="stylesheet" href="/static/app.css" />
+  <script>
+    // Inline pour éviter le flash au chargement
+    (function(){var t=localStorage.getItem('monassmat-theme')||'auto';var dark=t==='dark'||(t==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
 
@@ -14,16 +18,30 @@
   <header class="topbar">
     <div class="container topbar__inner">
       <a class="brand" href="/contracts">MonAssmat</a>
-      <nav class="topbar__nav">
-        <a href="/contracts">Contrats</a>
-        <a href="/children">Enfants</a>
-      </nav>
       {% if contract_id %}
-        <div class="topbar__meta">
-          <a class="chip" href="/contracts">← Contrats</a>
-          <span class="chip">{% if contract_name %}{{ contract_name }}{% else %}Contrat #{{ contract_id }}{% endif %}</span>
+        {% set _labels = {"calendar": "Calendrier", "year": "Synthèse annuelle", "paid-leave": "Congés payés", "payments": "Paiements", "settings": "Paramètres"} %}
+        <div class="topbar__breadcrumb">
+          <a href="/contracts" class="breadcrumb__back">← {{ contract_name or ("Contrat #" ~ contract_id) }}</a>
+          {% if current_section %}
+            <span class="breadcrumb__sep">/</span>
+            <span class="breadcrumb__current">{{ _labels[current_section] if current_section in _labels else current_section }}</span>
+          {% endif %}
         </div>
+        <div class="topbar__ctx-actions">
+          {% if current_section != "year" %}
+            <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year">📊 Synthèse</a>
+          {% endif %}
+          {% if current_section != "settings" %}
+            <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/settings">⚙️</a>
+          {% endif %}
+        </div>
+      {% else %}
+        <nav class="topbar__nav">
+          <a href="/contracts">Contrats</a>
+          <a href="/children">Enfants</a>
+        </nav>
       {% endif %}
+      <button id="theme-toggle" class="theme-toggle" title="Thème" aria-label="Changer le thème">◐</button>
     </div>
   </header>
 
@@ -34,6 +52,7 @@
   <div id="toast" class="toast" aria-live="polite"></div>
 
   <script src="/static/calendar.js"></script>
+  <script src="/static/theme.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
