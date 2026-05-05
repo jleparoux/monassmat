@@ -573,6 +573,7 @@ def calendar_page(contract_id: int, request: Request, initial_date: date | None 
             "contract_id": contract_id,
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "initial_date": initial_date.isoformat(),
+            "current_section": "calendar",
         },
     )
 
@@ -595,6 +596,7 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
             "snapshots": snapshots,
             "effective_from": date.today().isoformat(),
             "today_year": date.today().year,
+            "current_section": "settings",
         },
     )
 
@@ -723,6 +725,7 @@ def edit_settings_snapshot(
             "contract_id": contract_id,
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "snapshot": snapshot,
+            "current_section": "settings",
         },
     )
 
@@ -1028,6 +1031,7 @@ def year_summary_page(
             "contract_name": contract_name,
             "prev_year": target_year - 1,
             "next_year": target_year + 1,
+            "current_section": "year",
             **summary,
         },
     )
@@ -1111,6 +1115,7 @@ def paid_leave_page(
             "amount_maintien": amount_maintien,
             "history": history,
             "saved": saved,
+            "current_section": "paid-leave",
         },
     )
 
@@ -1144,6 +1149,7 @@ def payments_page(
             "prefill_amount": amount,
             "saved": saved,
             "deleted": deleted,
+            "current_section": "payments",
         },
     )
 
