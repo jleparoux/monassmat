@@ -3,122 +3,87 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">Contrats</h1>
-    <p class="page-subtitle">Tableau de bord pour piloter les contrats et naviguer rapidement.</p>
+    <h1 class="page-title">Mes contrats</h1>
   </div>
   <div class="page-actions">
-    <a class="btn btn-secondary" data-quick-action="calendar" href="#">Calendrier actif</a>
-    <a class="btn" data-quick-action="year" href="#">Synthese annuelle</a>
-    <a class="btn" data-quick-action="settings" href="#">Parametres</a>
-    <a class="btn btn-primary" href="/contracts/new">Nouveau contrat</a>
+    <a class="btn btn-primary" href="/contracts/new">+ Nouveau contrat</a>
   </div>
 </div>
 
-<section class="dashboard-kpis">
-  <div class="card kpi-card">
-    <div class="kpi-label">Contrats actifs</div>
-    <div class="kpi-value">
-      {{ items | selectattr("is_active") | list | length }}
-    </div>
-    <div class="kpi-meta">sur {{ items | length }}</div>
-  </div>
-  <div class="card kpi-card">
-    <div class="kpi-label">Heures mensualisees (total)</div>
-    <div class="kpi-value">
-      {{ items | map(attribute="monthly_hours_theoretical") | sum | round(2) }} h
-    </div>
-    <div class="kpi-meta">cumul des contrats</div>
-  </div>
-  <div class="card kpi-card">
-    <div class="kpi-label">Salaire mensualise (total)</div>
-    <div class="kpi-value">
-      {{ items | map(attribute="monthly_salary_theoretical") | sum | round(2) }} €
-    </div>
-    <div class="kpi-meta">hors ajustements</div>
-  </div>
-  <div class="card kpi-card">
-    <div class="kpi-label">Contrats clos</div>
-    <div class="kpi-value">
-      {{ items | rejectattr("is_active") | list | length }}
-    </div>
-    <div class="kpi-meta">historique</div>
-  </div>
-</section>
-
-<section class="dashboard-toolbar">
-  <div class="toolbar-group">
-    <button class="filter-chip is-active" type="button" data-filter="all">Tous</button>
-    <button class="filter-chip" type="button" data-filter="active">Actifs</button>
-    <button class="filter-chip" type="button" data-filter="closed">Clos</button>
-  </div>
-  <div class="toolbar-group">
-    <button class="filter-chip" type="button" data-sort="salary">Tri: salaire</button>
-    <button class="filter-chip" type="button" data-sort="hours">Tri: heures</button>
-    <button class="filter-chip" type="button" data-sort="id">Tri: id</button>
-  </div>
-</section>
-
 <section class="contracts-grid">
-  {% for item in items %}
-    <article class="card contract-card" data-status="{{ "active" if item.is_active else "closed" }}"
-             data-salary="{{ item.monthly_salary_theoretical }}" data-hours="{{ item.monthly_hours_theoretical }}"
-             data-id="{{ item.id }}">
+  {% for item in items if item.is_active %}
+    {% set pct = ((item.days_entered / item.days_expected) * 100) | round | int if item.days_expected > 0 else 0 %}
+    {% set pct_capped = [pct, 100] | min %}
+    {% set bar_cls = "progress-bar__fill--ok" if item.days_entered >= (item.days_expected * 0.8) else ("progress-bar__fill--warn" if item.days_expected > 0 else "progress-bar__fill--neutral") %}
+    {% set count_cls = "text-ok" if item.days_entered >= item.days_expected else "muted" %}
+    <article class="card">
       <div class="card__header">
         <div>
-          <div class="title">
-            Contrat #{{ item.id }}{% if item.name %} - {{ item.name }}{% endif %}
-          </div>
-          <div class="muted">{{ item.child_name }}</div>
+          <div class="title">{{ item.child_name }}{% if item.name %} · {{ item.name }}{% endif %}</div>
+          <div class="muted">{{ item.hours_per_week | round(1) }}h/sem · {{ item.weeks_per_year | round(0) | int }} sem/an · {{ item.hourly_rate }} €/h</div>
         </div>
-        {% if item.is_active %}
-          <span class="badge badge--ok">Actif</span>
-        {% else %}
-          <span class="badge">Clos</span>
-        {% endif %}
+        <span class="badge badge--ok">Actif</span>
       </div>
       <div class="card__body">
-        <div class="contract-highlight">
-          <div class="highlight-block">
-            <span class="label">Salaire mensualise</span>
-            <span class="value">{{ item.monthly_salary_theoretical | round(2) }} €</span>
+        <div class="progress-row">
+          <div class="progress-label">
+            <span>{{ month_name }} {{ month_year }} — jours saisis</span>
+            <span class="{{ count_cls }}">{{ item.days_entered }} / {{ item.days_expected }}</span>
           </div>
-          <div class="highlight-block">
-            <span class="label">Heures mensualisees</span>
-            <span class="value">{{ item.monthly_hours_theoretical | round(2) }} h</span>
+          <div class="progress-bar">
+            <div class="progress-bar__fill {{ bar_cls }}" style="width: {{ pct_capped }}%"></div>
           </div>
         </div>
-        <div class="summary-list">
-          <div class="summary-row">
-            <span class="label">Periode</span>
-            <span class="value">{{ item.start_date }} → {{ item.end_date or "—" }}</span>
+        <div class="contract-kpis">
+          <div class="kpi">
+            <div class="kpi__label">Salaire mensuel</div>
+            <div class="kpi__value">{{ item.monthly_salary_theoretical | round(2) }} €</div>
           </div>
-          <div class="summary-row">
-            <span class="label">Heures / semaine</span>
-            <span class="value">{{ item.hours_per_week | round(2) }} h</span>
-          </div>
-          <div class="summary-row">
-            <span class="label">Semaines / an</span>
-            <span class="value">{{ item.weeks_per_year | round(2) }}</span>
-          </div>
-          <div class="summary-row">
-            <span class="label">Tarif horaire</span>
-            <span class="value">{{ item.hourly_rate | round(2) }} €</span>
+          <div class="kpi">
+            <div class="kpi__label">CP (solde)</div>
+            <div class="kpi__value">{{ item.cp_balance }} j</div>
           </div>
         </div>
       </div>
-      <div class="card__footer contract-actions">
-        <a class="btn btn-secondary" href="/contracts/{{ item.id }}/calendar">Calendrier</a>
-        <a class="btn" href="/contracts/{{ item.id }}/summary/year">Synthese annuelle</a>
-        <a class="btn" href="/contracts/{{ item.id }}/settings">Parametres</a>
+      <div class="action-grid">
+        <a class="action-grid__item action-grid__item--primary" href="/contracts/{{ item.id }}/calendar">📅 Calendrier</a>
+        <a class="action-grid__item" href="/contracts/{{ item.id }}/summary/year">📊 Synthèse annuelle</a>
+        <a class="action-grid__item" href="/contracts/{{ item.id }}/paid-leave">🌴 Congés payés</a>
+        <a class="action-grid__item" href="/contracts/{{ item.id }}/settings">⚙️ Paramètres</a>
       </div>
     </article>
   {% else %}
-    <div class="empty">Aucun contrat disponible.</div>
+    <div class="empty">
+      Aucun contrat actif.
+      <a href="/contracts/new" class="link">Créer un contrat →</a>
+    </div>
   {% endfor %}
 </section>
 
-{% endblock %}
+{% set closed_items = items | rejectattr("is_active") | list %}
+{% if closed_items %}
+  <details class="contracts-closed">
+    <summary>Voir les contrats clos ({{ closed_items | length }})</summary>
+    <div class="contracts-grid" style="margin-top: 12px;">
+      {% for item in closed_items %}
+        <article class="card">
+          <div class="card__header">
+            <div>
+              <div class="title">{{ item.child_name }}{% if item.name %} · {{ item.name }}{% endif %}</div>
+              <div class="muted">Clos le {{ item.end_date }}</div>
+            </div>
+            <span class="badge">Clos</span>
+          </div>
+          <div class="action-grid">
+            <a class="action-grid__item" href="/contracts/{{ item.id }}/calendar">📅 Calendrier</a>
+            <a class="action-grid__item" href="/contracts/{{ item.id }}/summary/year">📊 Synthèse</a>
+            <a class="action-grid__item" href="/contracts/{{ item.id }}/paid-leave">🌴 Congés</a>
+            <a class="action-grid__item" href="/contracts/{{ item.id }}/settings">⚙️ Paramètres</a>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </details>
+{% endif %}
 
-{% block scripts %}
-  <script src="/static/contracts.js"></script>
 {% endblock %}
