@@ -1313,6 +1313,13 @@ def update_child_route(
 @app.get("/contracts", response_class=HTMLResponse)
 def contracts_summary(request: Request, db: Session = Depends(get_db)):
     contracts = crud.list_contracts(db)
+    today = date.today()
+    month_start = today.replace(day=1)
+    _, last_day = calendar.monthrange(today.year, today.month)
+    month_end = today.replace(day=last_day)
+    days_expected = sum(1 for d in iter_days(month_start, month_end) if d.weekday() < 5)
+    cp_year_start, cp_year_end = _paid_leave_year_bounds(today)
+
     items = []
     for contract in contracts:
         facts = ContractFacts(
@@ -1322,6 +1329,22 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
             weeks_per_year=contract.weeks_per_year,
             hourly_rate=contract.hourly_rate,
         )
+        is_active = contract.end_date is None or contract.end_date >= today
+
+        month_workdays = crud.list_workdays(db, contract.id, month_start, month_end)
+        days_entered = sum(1 for w in month_workdays if w.kind != WorkdayKind.HOLIDAY)
+
+        cp_workdays = crud.list_workdays(db, contract.id, cp_year_start, cp_year_end)
+        wf_list = [
+            WorkdayFacts(day=w.date, hours=w.hours, kind=CalcWorkdayKind(w.kind.value))
+            for w in cp_workdays
+        ]
+        cp_acquired = round(
+            paid_leave_acquired_days_v1(wf_list, Period(start=cp_year_start, end=cp_year_end)), 1
+        )
+        cp_taken = sum(1 for w in cp_workdays if w.kind == WorkdayKind.ASSMAT_LEAVE)
+        cp_balance = round(cp_acquired - cp_taken, 1)
+
         items.append(
             {
                 "id": contract.id,
@@ -1332,17 +1355,22 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
                 "hours_per_week": contract.hours_per_week,
                 "weeks_per_year": contract.weeks_per_year,
                 "hourly_rate": contract.hourly_rate,
-                "monthly_hours_theoretical": contract_monthly_hours(facts),
                 "monthly_salary_theoretical": contract_monthly_salary(facts),
-                "is_active": contract.end_date is None or contract.end_date >= date.today(),
+                "is_active": is_active,
+                "days_entered": days_entered,
+                "days_expected": days_expected,
+                "cp_balance": cp_balance,
             }
         )
+
     return templates.TemplateResponse(
         "contracts_summary.html",
         {
             "request": request,
             "title": "Contrats",
             "items": items,
+            "month_name": MONTH_NAMES[today.month - 1],
+            "month_year": today.year,
         },
     )
 

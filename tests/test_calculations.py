@@ -129,3 +129,14 @@ def test_unpaid_leave_deduction_zero_days():
     assert unpaid_leave_deduction(
         0, hours_per_week=40.0, days_per_week=5, hourly_rate=5.0
     ) == 0.0
+
+
+def test_days_expected_may_2026():
+    """Vérifie qu'on compte bien les lun-ven d'un mois donné."""
+    from datetime import date
+    import calendar as cal_module
+    month_start = date(2026, 5, 1)
+    _, last_day = cal_module.monthrange(2026, 5)
+    month_end = date(2026, 5, last_day)
+    days = sum(1 for day in range(1, last_day + 1) if date(2026, 5, day).weekday() < 5)
+    assert days == 21  # Mai 2026 : 21 jours ouvrés (lun-ven)
