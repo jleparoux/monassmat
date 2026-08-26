@@ -1,9 +1,18 @@
 from datetime import date, datetime, time
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Time,
+    UniqueConstraint,
+)
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import Float, ForeignKey, Integer, String, Time, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # ---------------------------------------------------------------------------
@@ -72,6 +81,15 @@ class Contract(Base):
 
     hours_per_week: Mapped[float] = mapped_column(Float, nullable=False)
     weeks_per_year: Mapped[float] = mapped_column(Float, nullable=False)
+    year_mode: Mapped[ContractYearMode] = mapped_column(
+        SQLEnum(
+            ContractYearMode,
+            name="contract_year_mode",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=ContractYearMode.COMPLETE,
+    )
     hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
     days_per_week: Mapped[int | None] = mapped_column(Integer)
     majoration_threshold: Mapped[float | None] = mapped_column(Float)
@@ -172,6 +190,15 @@ class ContractSettingsSnapshot(Base):
 
     hours_per_week: Mapped[float] = mapped_column(Float, nullable=False)
     weeks_per_year: Mapped[float] = mapped_column(Float, nullable=False)
+    year_mode: Mapped[ContractYearMode] = mapped_column(
+        SQLEnum(
+            ContractYearMode,
+            name="contract_year_mode",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=ContractYearMode.COMPLETE,
+    )
     hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
     days_per_week: Mapped[int | None] = mapped_column(Integer)
     majoration_threshold: Mapped[float | None] = mapped_column(Float)

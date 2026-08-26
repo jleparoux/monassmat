@@ -107,3 +107,15 @@ If unsure between:
 
 This is a personal, long-term maintainable tool.
 Not a framework. Not a product.
+
+---
+
+## Local dev (uv)
+
+To run tests locally with uv:
+1) `source .venv/bin/activate`
+2) `uv sync --extra dev --extra db-postgres`
+3) `uv run pytest`
+
+Notes:
+- For SQLite-only work, replace `--extra db-postgres` with `--extra db-sqlite`.

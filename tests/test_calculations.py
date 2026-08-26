@@ -1,8 +1,11 @@
+import calendar
 from datetime import date
 
 import pytest
+
 from monassmat.calculations import (
     ContractFacts,
+    ContractYearMode,
     PaidLeaveMethod,
     Period,
     WorkdayFacts,
@@ -10,6 +13,7 @@ from monassmat.calculations import (
     contract_monthly_hours,
     contract_monthly_salary,
     hours_in_period,
+    paid_leave_acquired_days,
     paid_leave_value,
     unpaid_leave_deduction,
     workday_totals,
@@ -66,6 +70,17 @@ def test_paid_leave_value_dixieme_requires_amount():
             daily_reference_hours=8.0,
             hourly_rate=5.0,
         )
+
+
+def test_paid_leave_value_dixieme_returns_reference_amount():
+    amount = paid_leave_value(
+        method=PaidLeaveMethod.DIXIEME,
+        days_taken=2.0,
+        daily_reference_hours=8.0,
+        hourly_rate=5.0,
+        dixieme_reference_amount=120.0,
+    )
+    assert amount == 120.0
 
 
 def test_workday_totals_with_majoration():
@@ -133,10 +148,30 @@ def test_unpaid_leave_deduction_zero_days():
 
 def test_days_expected_may_2026():
     """Vérifie qu'on compte bien les lun-ven d'un mois donné."""
-    from datetime import date
-    import calendar as cal_module
-    month_start = date(2026, 5, 1)
-    _, last_day = cal_module.monthrange(2026, 5)
-    month_end = date(2026, 5, last_day)
+    _, last_day = calendar.monthrange(2026, 5)
     days = sum(1 for day in range(1, last_day + 1) if date(2026, 5, day).weekday() < 5)
     assert days == 21  # Mai 2026 : 21 jours ouvrés (lun-ven)
+
+
+def test_paid_leave_acquired_days_complete_mode():
+    assert (
+        paid_leave_acquired_days(mode=ContractYearMode.COMPLETE, extra_days=0)
+        == 30
+    )
+
+
+def test_paid_leave_acquired_days_incomplete_rounds_up():
+    acquired = paid_leave_acquired_days(
+        mode=ContractYearMode.INCOMPLETE,
+        weeks_worked=41.0,
+    )
+    assert acquired == 26
+
+
+def test_paid_leave_acquired_days_with_extra_days():
+    acquired = paid_leave_acquired_days(
+        mode=ContractYearMode.INCOMPLETE,
+        weeks_worked=40.0,
+        extra_days=4,
+    )
+    assert acquired == 29

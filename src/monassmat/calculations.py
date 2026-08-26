@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, time
 from enum import Enum
-from typing import Iterable
 
 
 class WorkdayKind(str, Enum):
@@ -17,6 +18,11 @@ class WorkdayKind(str, Enum):
 class PaidLeaveMethod(str, Enum):
     MAINTIEN = "maintien"
     DIXIEME = "dixieme"
+
+
+class ContractYearMode(str, Enum):
+    COMPLETE = "complete"
+    INCOMPLETE = "incomplete"
 
 
 @dataclass(frozen=True)
@@ -225,6 +231,37 @@ def paid_leave_acquired_days_v1(
     # Placeholder: 2.5 days per 4 weeks approx -> 2.5 per 20 worked days rough proxy
     # You will replace this once rules are specified precisely.
     return (worked_days / 20.0) * 2.5
+
+
+def paid_leave_acquired_days(
+    *,
+    mode: ContractYearMode,
+    weeks_worked: float | None = None,
+    extra_days: int = 0,
+) -> int:
+    """
+    Compute acquired paid leave days using explicit rules:
+
+    - COMPLETE: 2.5 days per month x 12 months = 30 days.
+    - INCOMPLETE: (weeks_worked / 4) * 2.5, rounded up to the next whole day.
+
+    extra_days allows adding legally defined supplementary days (children, fractionnement, ...).
+    """
+    if extra_days < 0:
+        raise ValueError("extra_days must be >= 0")
+
+    if mode == ContractYearMode.COMPLETE:
+        return 30 + extra_days
+
+    if mode == ContractYearMode.INCOMPLETE:
+        if weeks_worked is None:
+            raise ValueError("weeks_worked is required for INCOMPLETE mode")
+        if weeks_worked < 0:
+            raise ValueError("weeks_worked must be >= 0")
+        acquired = (weeks_worked / 4.0) * 2.5
+        return int(math.ceil(acquired)) + extra_days
+
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 def paid_leave_value(

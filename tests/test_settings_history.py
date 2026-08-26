@@ -61,12 +61,14 @@ def test_settings_history_affects_salary_and_fees():
         fee_meal_amount=1.0,
         fee_maintenance_amount=2.0,
         salary_net_ceiling=None,
+        year_mode=ContractYearMode.COMPLETE,
     )
     snapshots = [
         DummySnapshot(
             valid_from=date(2025, 1, 1),
             hours_per_week=40.0,
             weeks_per_year=52.0,
+            year_mode=ContractYearMode.COMPLETE,
             hourly_rate=5.0,
             days_per_week=5,
             majoration_threshold=None,
@@ -79,6 +81,7 @@ def test_settings_history_affects_salary_and_fees():
             valid_from=date(2025, 1, 15),
             hours_per_week=20.0,
             weeks_per_year=52.0,
+            year_mode=ContractYearMode.COMPLETE,
             hourly_rate=6.0,
             days_per_week=5,
             majoration_threshold=None,

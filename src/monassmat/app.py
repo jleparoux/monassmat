@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, time, timedelta
 import calendar
 import csv
 import io
 import json
 import os
 import urllib.request
+from datetime import date, time, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -16,22 +16,27 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from . import crud
-from .calculations import ContractFacts, WorkdayFacts
-from .calculations import WorkdayKind as CalcWorkdayKind
 from .calculations import (
-    Period,
+    ContractFacts,
     PaidLeaveMethod,
+    Period,
+    WorkdayFacts,
     contract_monthly_hours,
     contract_monthly_salary,
     hours_between_times,
+    paid_leave_acquired_days,
     paid_leave_acquired_days_v1,
     paid_leave_value,
     parse_holidays_response,
     unpaid_leave_deduction,
     workday_totals,
 )
+from .calculations import (
+    ContractYearMode as CalcContractYearMode,
+)
+from .calculations import WorkdayKind as CalcWorkdayKind
 from .db import get_db, session_scope
-from .models import Child, Contract, ContractYearMode, WorkdayKind
+from .models import Contract, ContractYearMode, WorkdayKind
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # .../monassmat/
@@ -135,6 +140,7 @@ def snapshot_from_contract(contract, valid_from: date) -> dict:
         "valid_from": valid_from,
         "hours_per_week": contract.hours_per_week,
         "weeks_per_year": contract.weeks_per_year,
+        "year_mode": contract.year_mode,
         "hourly_rate": contract.hourly_rate,
         "days_per_week": contract.days_per_week,
         "majoration_threshold": contract.majoration_threshold,
@@ -150,6 +156,7 @@ def snapshot_from_row(row) -> dict:
         "valid_from": row.valid_from,
         "hours_per_week": row.hours_per_week,
         "weeks_per_year": row.weeks_per_year,
+        "year_mode": row.year_mode,
         "hourly_rate": row.hourly_rate,
         "days_per_week": row.days_per_week,
         "majoration_threshold": row.majoration_threshold,
@@ -166,6 +173,16 @@ def build_settings_timeline(contract, snapshots: list) -> list[dict]:
     ordered = [snapshot_from_row(row) for row in snapshots]
     ordered.sort(key=lambda item: item["valid_from"])
     return ordered
+
+
+def settings_for_day(settings: list[dict], day: date) -> dict:
+    index = 0
+    for i in range(len(settings) - 1):
+        if settings[i + 1]["valid_from"] <= day:
+            index = i + 1
+        else:
+            break
+    return settings[index]
 
 
 def summarize_period(
@@ -271,7 +288,6 @@ def summarize_period(
     hours_delta = real_hours - theo_hours
     total_estimated = total_salary + fee_meal_total + fee_maintenance_total - unpaid_deduction
     average_hours = real_hours / work_days if work_days else 0.0
-
     return MonthlySummaryOut(
         period_start=start,
         period_end=end,
@@ -296,6 +312,10 @@ def summarize_period(
         unpaid_leave_deduction=unpaid_deduction,
         total_estimated=total_estimated,
         average_hours_per_day=average_hours,
+        paid_leave_days_annual=0,
+        paid_leave_mode="",
+        paid_leave_days_taken=0,
+        paid_leave_days_balance=0,
     )
 
 
@@ -307,9 +327,31 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
 
         workdays = crud.list_workdays(db, contract_id, start, end)
         snapshots = crud.list_settings_snapshots(db, contract_id)
-        return summarize_period(
+        summary = summarize_period(
             contract, workdays, snapshots, start=start, end=end
         )
+        paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
+        paid_leave_workdays = crud.list_workdays(
+            db, contract_id, paid_leave_start, paid_leave_end
+        )
+        settings = build_settings_timeline(contract, snapshots)
+        paid_leave_settings = settings_for_day(settings, paid_leave_start)
+        paid_leave_mode = CalcContractYearMode(paid_leave_settings["year_mode"].value)
+        paid_leave_days_annual = paid_leave_acquired_days(
+            mode=paid_leave_mode,
+            weeks_worked=paid_leave_settings["weeks_per_year"]
+            if paid_leave_mode == CalcContractYearMode.INCOMPLETE
+            else None,
+            extra_days=0,
+        )
+        paid_leave_days_taken = count_assmat_leave_days(paid_leave_workdays)
+        summary.paid_leave_days_annual = paid_leave_days_annual
+        summary.paid_leave_mode = paid_leave_settings["year_mode"].value
+        summary.paid_leave_days_taken = paid_leave_days_taken
+        summary.paid_leave_days_balance = (
+            paid_leave_days_annual - paid_leave_days_taken
+        )
+        return summary
 
 
 def fetch_holidays_api(year: int) -> dict[str, str]:
@@ -372,6 +414,20 @@ def year_bounds(year: int) -> tuple[date, date]:
     return date(year, 1, 1), date(year, 12, 31)
 
 
+def paid_leave_year_bounds(day: date) -> tuple[date, date]:
+    if day.month >= 6:
+        start = date(day.year, 6, 1)
+        end = date(day.year + 1, 5, 31)
+        return start, end
+    start = date(day.year - 1, 6, 1)
+    end = date(day.year, 5, 31)
+    return start, end
+
+
+def count_assmat_leave_days(workdays: list) -> int:
+    return sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE)
+
+
 @app.get("/contracts/{contract_id}/summary/monthly", response_model=MonthlySummaryOut)
 def monthly_summary(contract_id: int, start: date | None = None, end: date | None = None):
     if start and end:
@@ -391,6 +447,20 @@ def build_year_summary(contract_id: int, year: int) -> dict:
         start, end = year_bounds(year)
         workdays = crud.list_workdays(db, contract_id, start, end)
         snapshots = crud.list_settings_snapshots(db, contract_id)
+        settings = build_settings_timeline(contract, snapshots)
+        paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
+        paid_leave_settings = settings_for_day(settings, paid_leave_start)
+        paid_leave_mode = CalcContractYearMode(paid_leave_settings["year_mode"].value)
+        paid_leave_days_annual = paid_leave_acquired_days(
+            mode=paid_leave_mode,
+            weeks_worked=paid_leave_settings["weeks_per_year"]
+            if paid_leave_mode == CalcContractYearMode.INCOMPLETE
+            else None,
+            extra_days=0,
+        )
+        paid_leave_workdays = crud.list_workdays(
+            db, contract_id, paid_leave_start, paid_leave_end
+        )
 
         monthly_items = []
         totals = {
@@ -413,6 +483,10 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             "total_estimated": 0.0,
             "yearly_hours_theoretical": 0.0,
             "yearly_salary_theoretical": 0.0,
+            "paid_leave_days_annual": paid_leave_days_annual,
+            "paid_leave_mode": paid_leave_settings["year_mode"].value,
+            "paid_leave_days_taken": 0,
+            "paid_leave_days_balance": 0,
         }
 
         for month in range(1, 13):
@@ -449,6 +523,13 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             totals["total_estimated"] += summary.total_estimated
             totals["yearly_hours_theoretical"] += summary.monthly_hours_theoretical
             totals["yearly_salary_theoretical"] += summary.monthly_salary_theoretical
+
+        totals["paid_leave_days_taken"] = count_assmat_leave_days(
+            paid_leave_workdays
+        )
+        totals["paid_leave_days_balance"] = (
+            totals["paid_leave_days_annual"] - totals["paid_leave_days_taken"]
+        )
 
         hours_delta = totals["hours_real"] - totals["yearly_hours_theoretical"]
         average_hours = (
@@ -585,6 +666,14 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Contract not found")
     snapshots = crud.list_settings_snapshots(db, contract_id)
 
+    current_mode = CalcContractYearMode(contract.year_mode.value)
+    current_paid_leave_days = paid_leave_acquired_days(
+        mode=current_mode,
+        weeks_worked=contract.weeks_per_year
+        if current_mode == CalcContractYearMode.INCOMPLETE
+        else None,
+        extra_days=0,
+    )
     return templates.TemplateResponse(
         "contract_settings.html",
         {
@@ -597,6 +686,8 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
             "effective_from": date.today().isoformat(),
             "today_year": date.today().year,
             "current_section": "settings",
+            "year_modes": [m.value for m in ContractYearMode],
+            "paid_leave_days_annual": current_paid_leave_days,
         },
     )
 
@@ -611,6 +702,7 @@ def save_contract_settings(
     effective_from: str = Form(...),
     hours_per_week: str = Form(...),
     weeks_per_year: str = Form(...),
+    year_mode: str = Form(...),
     hourly_rate: str = Form(...),
     days_per_week: str | None = Form(None),
     majoration_threshold: str | None = Form(None),
@@ -627,6 +719,7 @@ def save_contract_settings(
     previous_values = {
         "hours_per_week": contract.hours_per_week,
         "weeks_per_year": contract.weeks_per_year,
+        "year_mode": contract.year_mode,
         "hourly_rate": contract.hourly_rate,
         "days_per_week": contract.days_per_week,
         "majoration_threshold": contract.majoration_threshold,
@@ -641,6 +734,7 @@ def save_contract_settings(
     contract.end_date = date_from_iso(end_date) if end_date else None
     contract.hours_per_week = float(hours_per_week)
     contract.weeks_per_year = float(weeks_per_year)
+    contract.year_mode = ContractYearMode(year_mode)
     contract.hourly_rate = float(hourly_rate)
     contract.days_per_week = parse_optional_int(days_per_week)
     contract.majoration_threshold = parse_optional_float(majoration_threshold)
@@ -658,6 +752,7 @@ def save_contract_settings(
             valid_from=contract.start_date,
             hours_per_week=previous_values["hours_per_week"],
             weeks_per_year=previous_values["weeks_per_year"],
+            year_mode=previous_values["year_mode"],
             hourly_rate=previous_values["hourly_rate"],
             days_per_week=previous_values["days_per_week"],
             majoration_threshold=previous_values["majoration_threshold"],
@@ -672,6 +767,7 @@ def save_contract_settings(
         valid_from=effective_from_date,
         hours_per_week=contract.hours_per_week,
         weeks_per_year=contract.weeks_per_year,
+        year_mode=contract.year_mode,
         hourly_rate=contract.hourly_rate,
         days_per_week=contract.days_per_week,
         majoration_threshold=contract.majoration_threshold,
@@ -683,6 +779,14 @@ def save_contract_settings(
     db.commit()
     snapshots = crud.list_settings_snapshots(db, contract_id)
 
+    current_mode = CalcContractYearMode(contract.year_mode.value)
+    current_paid_leave_days = paid_leave_acquired_days(
+        mode=current_mode,
+        weeks_worked=contract.weeks_per_year
+        if current_mode == CalcContractYearMode.INCOMPLETE
+        else None,
+        extra_days=0,
+    )
     return templates.TemplateResponse(
         "contract_settings.html",
         {
@@ -695,6 +799,8 @@ def save_contract_settings(
             "effective_from": effective_from,
             "today_year": date.today().year,
             "saved": True,
+            "year_modes": [m.value for m in ContractYearMode],
+            "paid_leave_days_annual": current_paid_leave_days,
         },
     )
 
@@ -716,6 +822,13 @@ def edit_settings_snapshot(
     if not snapshot:
         raise HTTPException(status_code=404, detail="Snapshot not found")
 
+    paid_leave_days = paid_leave_acquired_days(
+        mode=CalcContractYearMode(snapshot.year_mode.value),
+        weeks_worked=snapshot.weeks_per_year
+        if snapshot.year_mode == ContractYearMode.INCOMPLETE
+        else None,
+        extra_days=0,
+    )
     return templates.TemplateResponse(
         "settings_snapshot_form.html",
         {
@@ -726,6 +839,8 @@ def edit_settings_snapshot(
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "snapshot": snapshot,
             "current_section": "settings",
+            "year_modes": [m.value for m in ContractYearMode],
+            "paid_leave_days_annual": paid_leave_days,
         },
     )
 
@@ -738,6 +853,7 @@ def save_settings_snapshot(
     valid_from: str = Form(...),
     hours_per_week: str = Form(...),
     weeks_per_year: str = Form(...),
+    year_mode: str = Form(...),
     hourly_rate: str = Form(...),
     days_per_week: str | None = Form(None),
     majoration_threshold: str | None = Form(None),
@@ -774,6 +890,7 @@ def save_settings_snapshot(
                     "contract_name": contract.name or f"Contrat #{contract_id}",
                     "snapshot": snapshot,
                     "error": "Un snapshot existe deja a cette date.",
+                    "year_modes": [m.value for m in ContractYearMode],
                 },
             )
 
@@ -789,6 +906,7 @@ def save_settings_snapshot(
         valid_from=valid_from_date,
         hours_per_week=float(hours_per_week),
         weeks_per_year=float(weeks_per_year),
+        year_mode=ContractYearMode(year_mode),
         hourly_rate=float(hourly_rate),
         days_per_week=parse_optional_int(days_per_week),
         majoration_threshold=parse_optional_float(majoration_threshold),
@@ -802,6 +920,13 @@ def save_settings_snapshot(
     snapshot = crud.get_settings_snapshot(
         db, contract_id=contract_id, valid_from=valid_from_date
     )
+    paid_leave_days = paid_leave_acquired_days(
+        mode=CalcContractYearMode(snapshot.year_mode.value),
+        weeks_worked=snapshot.weeks_per_year
+        if snapshot.year_mode == ContractYearMode.INCOMPLETE
+        else None,
+        extra_days=0,
+    )
     return templates.TemplateResponse(
         "settings_snapshot_form.html",
         {
@@ -812,6 +937,8 @@ def save_settings_snapshot(
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "snapshot": snapshot,
             "saved": True,
+            "year_modes": [m.value for m in ContractYearMode],
+            "paid_leave_days_annual": paid_leave_days,
         },
     )
 
@@ -836,6 +963,14 @@ def delete_settings_snapshot(
     db.commit()
 
     snapshots = crud.list_settings_snapshots(db, contract_id)
+    current_mode = CalcContractYearMode(contract.year_mode.value)
+    current_paid_leave_days = paid_leave_acquired_days(
+        mode=current_mode,
+        weeks_worked=contract.weeks_per_year
+        if current_mode == CalcContractYearMode.INCOMPLETE
+        else None,
+        extra_days=0,
+    )
     return templates.TemplateResponse(
         "contract_settings.html",
         {
@@ -848,6 +983,8 @@ def delete_settings_snapshot(
             "effective_from": date.today().isoformat(),
             "today_year": date.today().year,
             "deleted": True,
+            "year_modes": [m.value for m in ContractYearMode],
+            "paid_leave_days_annual": current_paid_leave_days,
         },
     )
 
@@ -1375,6 +1512,8 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
     )
 
 
+
+
 @app.get("/contracts/new", response_class=HTMLResponse)
 def new_contract(request: Request, child_id: int | None = None, db: Session = Depends(get_db)):
     children = crud.list_children(db)
@@ -1445,6 +1584,7 @@ def create_contract(
         valid_from=contract.start_date,
         hours_per_week=contract.hours_per_week,
         weeks_per_year=contract.weeks_per_year,
+        year_mode=contract.year_mode,
         hourly_rate=contract.hourly_rate,
         days_per_week=contract.days_per_week,
         majoration_threshold=contract.majoration_threshold,

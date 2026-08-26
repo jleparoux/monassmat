@@ -5,7 +5,18 @@ from datetime import date, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Child, Contract, ContractSettingsSnapshot, PaidLeave, PaidLeaveMethod, Payment, PaymentKind, Workday, WorkdayKind
+from .models import (
+    Child,
+    Contract,
+    ContractSettingsSnapshot,
+    ContractYearMode,
+    PaidLeave,
+    PaidLeaveMethod,
+    Payment,
+    PaymentKind,
+    Workday,
+    WorkdayKind,
+)
 
 
 def get_contract(db: Session, contract_id: int) -> Contract | None:
@@ -35,6 +46,7 @@ def upsert_settings_snapshot(
     valid_from: date,
     hours_per_week: float,
     weeks_per_year: float,
+    year_mode: ContractYearMode,
     hourly_rate: float,
     days_per_week: int | None,
     majoration_threshold: float | None,
@@ -51,6 +63,7 @@ def upsert_settings_snapshot(
     if existing:
         existing.hours_per_week = hours_per_week
         existing.weeks_per_year = weeks_per_year
+        existing.year_mode = year_mode
         existing.hourly_rate = hourly_rate
         existing.days_per_week = days_per_week
         existing.majoration_threshold = majoration_threshold
@@ -65,6 +78,7 @@ def upsert_settings_snapshot(
         valid_from=valid_from,
         hours_per_week=hours_per_week,
         weeks_per_year=weeks_per_year,
+        year_mode=year_mode,
         hourly_rate=hourly_rate,
         days_per_week=days_per_week,
         majoration_threshold=majoration_threshold,

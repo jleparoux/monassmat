@@ -13,6 +13,12 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Types de journee: travail, absence, conge sans solde, jour ferie
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
 
+## Conges payes (acquisition)
+- Mode d'annee: selectionner `complete` ou `incomplete` dans les parametres du contrat.
+- Annee complete: 2,5 jours par mois x 12 mois = 30 jours ouvrables.
+- Annee incomplete: (semaines travaillees / 4) x 2,5, arrondi a l'entier superieur.
+- Ajouter ensuite les jours supplementaires explicites (enfant a charge, fractionnement, etc.).
+
 ## Import assmat-tracker
 - Script: `scripts/import_assmat_tracker.py`
 - Import: `--month-file` ou `--months-dir` (avec `settings.json` optionnel)

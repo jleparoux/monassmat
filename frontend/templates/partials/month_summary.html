@@ -38,6 +38,14 @@
       <span class="label">Jours feries</span>
       <span class="value">{{ holiday_days }}</span>
     </div>
+    <div class="summary-row">
+      <span class="label">Conges payes (juin-mai)</span>
+      <span class="value">{{ paid_leave_days_annual }} j ({{ paid_leave_mode }})</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Conges payes (pris / solde)</span>
+      <span class="value">{{ paid_leave_days_taken }} j / {{ paid_leave_days_balance }} j</span>
+    </div>
     <div class="divider"></div>
     <div class="summary-row">
       <span class="label">Frais repas</span>
