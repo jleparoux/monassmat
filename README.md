@@ -13,11 +13,27 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Types de journee: travail, absence, conge sans solde, jour ferie
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
 
-## Conges payes (acquisition)
-- Mode d'annee: selectionner `complete` ou `incomplete` dans les parametres du contrat.
-- Annee complete: 2,5 jours par mois x 12 mois = 30 jours ouvrables.
-- Annee incomplete: (semaines travaillees / 4) x 2,5, arrondi a l'entier superieur.
-- Ajouter ensuite les jours supplementaires explicites (enfant a charge, fractionnement, etc.).
+## Statut des calculs de remuneration
+
+L'application est actuellement un outil de suivi, pas un logiciel de paie. Les
+montants appeles "reperes de suivi" dans l'interface ne doivent pas etre
+recopies tels quels dans Pajemploi.
+
+Regles implementees et testees dans `calculations.py`:
+- mensualisation: heures hebdomadaires x semaines programmees / 12 x taux;
+- classification hebdomadaire: heures complementaires au-dela du contrat et
+  jusqu'a 45 h, heures majorees au-dela de 45 h;
+- formules proportionnelles de deduction d'absence prevues a l'article 111.
+
+Les deux dernieres regles ne sont pas encore branchees au recapitulatif, car le
+modele doit d'abord enregistrer le planning contractuel par jour. Le compteur de
+conges payes visible dans l'interface est une estimation historique non
+fiabilisee, notamment pour les periodes de reference partiellement travaillees.
+
+Sources officielles:
+- [Convention collective, articles 96.4 et 108 a 111](https://www.legifrance.gouv.fr/conv_coll/id/KALIARTI000043942282)
+- [Calcul et declaration de la remuneration](https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html)
+- [Gestion des conges payes](https://www.urssaf.fr/accueil/particulier/particulier-employeur/gerer-les-absences/gestion-conges-payes.html)
 
 ## Import assmat-tracker
 - Script: `scripts/import_assmat_tracker.py`

@@ -57,6 +57,13 @@ class WorkdayTotals:
     total_salary: float
 
 
+@dataclass(frozen=True)
+class WeeklyHoursBreakdown:
+    normal_hours: float
+    complementary_hours: float
+    majorated_hours: float
+
+
 def _assert_positive(name: str, value: float) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be > 0 (got {value})")
@@ -82,11 +89,32 @@ def contract_monthly_hours(contract: ContractFacts) -> float:
 
 def contract_monthly_salary(contract: ContractFacts) -> float:
     """
-    Monthly salary (gross) based on contract facts:
+    Monthly salary based on contract facts:
         monthly_hours * hourly_rate
+
+    The result uses the same net or gross basis as ``hourly_rate``. The caller
+    must label that basis explicitly.
     """
     _assert_positive("hourly_rate", contract.hourly_rate)
     return contract_monthly_hours(contract) * contract.hourly_rate
+
+
+def validate_regular_contract_weeks(
+    *,
+    mode: ContractYearMode,
+    weeks_per_year: float,
+) -> None:
+    """Validate the two regular-care modes defined by article 97.1."""
+    _assert_positive("weeks_per_year", weeks_per_year)
+    if mode == ContractYearMode.COMPLETE:
+        if weeks_per_year != 52.0:
+            raise ValueError("52-week care must use exactly 52 weeks")
+        return
+    if mode == ContractYearMode.INCOMPLETE:
+        if weeks_per_year > 46.0:
+            raise ValueError("46-weeks-or-less care cannot exceed 46 weeks")
+        return
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 def hours_in_period(
@@ -119,6 +147,92 @@ def value_hours(hours: float, hourly_rate: float) -> float:
         raise ValueError("hours must be >= 0")
     _assert_positive("hourly_rate", hourly_rate)
     return hours * hourly_rate
+
+
+def classify_weekly_hours(
+    *,
+    worked_hours: float,
+    contracted_hours: float,
+) -> WeeklyHoursBreakdown:
+    """Classify one week's hours under articles 96.4 and 110.
+
+    Hours beyond the weekly contract and up to 45 hours are complementary.
+    Hours beyond 45 hours are majorated, including when the weekly contract
+    itself exceeds 45 hours.
+    """
+    if worked_hours < 0:
+        raise ValueError("worked_hours must be >= 0")
+    _assert_positive("contracted_hours", contracted_hours)
+
+    majoration_start = 45.0
+    normal_limit = min(contracted_hours, majoration_start)
+    normal_hours = min(worked_hours, normal_limit)
+    complementary_hours = max(
+        min(worked_hours, majoration_start) - normal_limit,
+        0.0,
+    )
+    majorated_hours = max(worked_hours - majoration_start, 0.0)
+
+    return WeeklyHoursBreakdown(
+        normal_hours=normal_hours,
+        complementary_hours=complementary_hours,
+        majorated_hours=majorated_hours,
+    )
+
+
+def _proportional_absence_deduction(
+    *,
+    monthly_salary: float,
+    absence_units: float,
+    scheduled_units_in_month: float,
+) -> float:
+    if monthly_salary < 0:
+        raise ValueError("monthly_salary must be >= 0")
+    if absence_units < 0:
+        raise ValueError("absence units must be >= 0")
+    if absence_units == 0:
+        return 0.0
+    _assert_positive("scheduled units in month", scheduled_units_in_month)
+    if absence_units > scheduled_units_in_month:
+        raise ValueError("absence units cannot exceed scheduled units in month")
+    return monthly_salary * absence_units / scheduled_units_in_month
+
+
+def absence_deduction_52_weeks(
+    *,
+    monthly_salary: float,
+    absence_hours: float,
+    scheduled_hours_in_month: float,
+) -> float:
+    """Deduct an unpaid absence for a 52-week regular contract.
+
+    ``scheduled_hours_in_month`` is the exact number of hours that would have
+    been worked in that calendar month according to the contract or planning;
+    it is not the number of monthly smoothed hours.
+    """
+    return _proportional_absence_deduction(
+        monthly_salary=monthly_salary,
+        absence_units=absence_hours,
+        scheduled_units_in_month=scheduled_hours_in_month,
+    )
+
+
+def absence_deduction_46_weeks(
+    *,
+    monthly_salary: float,
+    absence_days: float,
+    scheduled_days_in_month: float,
+) -> float:
+    """Deduct an unpaid absence for a 46-weeks-or-less regular contract.
+
+    ``scheduled_days_in_month`` is the exact number of days that would have
+    been worked in that calendar month according to the contract or planning.
+    """
+    return _proportional_absence_deduction(
+        monthly_salary=monthly_salary,
+        absence_units=absence_days,
+        scheduled_units_in_month=scheduled_days_in_month,
+    )
 
 
 def workday_totals(

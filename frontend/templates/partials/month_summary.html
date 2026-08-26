@@ -1,5 +1,10 @@
 <div class="summary-section">
   <div class="summary-title">Statistiques mensuelles</div>
+  <div class="notice notice--warning">
+    Recapitulatif de suivi uniquement. Le montant a declarer doit encore etre
+    verifie dans Pajemploi: les absences et heures complementaires/majorees ne
+    suivent pas encore le planning contractuel hebdomadaire.
+  </div>
   <div class="summary-list">
     <div class="summary-row">
       <span class="label">Heures contractuelles</span>
@@ -10,7 +15,7 @@
       <span class="value">{{ hours_real | round(2) }} h</span>
     </div>
     <div class="summary-row">
-      <span class="label">Heures majorees</span>
+      <span class="label">Heures majorees (ancien calcul quotidien)</span>
       <span class="value">{{ hours_majorated | round(2) }} h</span>
     </div>
     <div class="summary-row">
@@ -39,8 +44,8 @@
       <span class="value">{{ holiday_days }}</span>
     </div>
     <div class="summary-row">
-      <span class="label">Conges payes (juin-mai)</span>
-      <span class="value">{{ paid_leave_days_annual }} j ({{ paid_leave_mode }})</span>
+      <span class="label">Conges payes (estimation non fiabilisee)</span>
+      <span class="value">{{ paid_leave_days_annual }} j ({% if paid_leave_mode == "complete" %}52 semaines{% else %}46 semaines ou moins{% endif %})</span>
     </div>
     <div class="summary-row">
       <span class="label">Conges payes (pris / solde)</span>
@@ -57,23 +62,23 @@
     </div>
     <div class="divider"></div>
     <div class="summary-row">
-      <span class="label">Salaire mensualise</span>
+      <span class="label">Salaire mensualise contractuel</span>
       <span class="value">{{ monthly_salary_theoretical | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Salaire heures reelles</span>
+      <span class="label">Valeur indicative des heures saisies</span>
       <span class="value">{{ salary_base | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Majoration</span>
+      <span class="label">Majoration (ancien calcul quotidien)</span>
       <span class="value">{{ salary_majoration | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Deduction sans solde</span>
+      <span class="label">Deduction sans solde (approximation)</span>
       <span class="value">-{{ unpaid_leave_deduction | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Total estime</span>
+      <span class="label">Repere de suivi (non declaratif)</span>
       <span class="value highlight">{{ total_estimated | round(2) }} €</span>
     </div>
     <div class="divider"></div>
@@ -86,8 +91,8 @@
     <div class="summary-row">
       <span class="label">Paiements</span>
       <span class="value">
-        <a href="/contracts/{{ contract_id }}/payments?period_start={{ period_start }}&period_end={{ period_end }}&amount={{ total_estimated | round(2) }}">
-          Enregistrer ce mois →
+        <a href="/contracts/{{ contract_id }}/payments?period_start={{ period_start }}&period_end={{ period_end }}">
+          Saisir un paiement verifie →
         </a>
       </span>
     </div>

@@ -10,14 +10,117 @@ from monassmat.calculations import (
     Period,
     WorkdayFacts,
     WorkdayKind,
+    absence_deduction_46_weeks,
+    absence_deduction_52_weeks,
+    classify_weekly_hours,
     contract_monthly_hours,
     contract_monthly_salary,
     hours_in_period,
     paid_leave_acquired_days,
     paid_leave_value,
     unpaid_leave_deduction,
+    validate_regular_contract_weeks,
     workday_totals,
 )
+
+
+def test_classify_weekly_hours_matches_urssaf_example():
+    """32 h au contrat et 50 h faites donnent 13 h comp. et 5 h maj."""
+    result = classify_weekly_hours(
+        worked_hours=50.0,
+        contracted_hours=32.0,
+    )
+
+    assert result.normal_hours == 32.0
+    assert result.complementary_hours == 13.0
+    assert result.majorated_hours == 5.0
+
+
+def test_classify_weekly_hours_stops_complementary_hours_at_45():
+    result = classify_weekly_hours(
+        worked_hours=44.0,
+        contracted_hours=40.0,
+    )
+
+    assert result.normal_hours == 40.0
+    assert result.complementary_hours == 4.0
+    assert result.majorated_hours == 0.0
+
+
+def test_classify_weekly_hours_rejects_negative_values():
+    with pytest.raises(ValueError):
+        classify_weekly_hours(worked_hours=-1.0, contracted_hours=40.0)
+
+
+def test_absence_deduction_52_weeks_uses_month_real_schedule_hours():
+    result = absence_deduction_52_weeks(
+        monthly_salary=416.0,
+        absence_hours=8.0,
+        scheduled_hours_in_month=144.0,
+    )
+
+    assert result == pytest.approx(416.0 * 8.0 / 144.0)
+
+
+def test_absence_deduction_46_weeks_uses_month_real_schedule_days():
+    result = absence_deduction_46_weeks(
+        monthly_salary=370.0,
+        absence_days=1.0,
+        scheduled_days_in_month=17.0,
+    )
+
+    assert result == pytest.approx(370.0 / 17.0)
+
+
+@pytest.mark.parametrize(
+    ("function", "kwargs"),
+    [
+        (
+            absence_deduction_52_weeks,
+            {
+                "monthly_salary": 416.0,
+                "absence_hours": 8.0,
+                "scheduled_hours_in_month": 0.0,
+            },
+        ),
+        (
+            absence_deduction_46_weeks,
+            {
+                "monthly_salary": 370.0,
+                "absence_days": 18.0,
+                "scheduled_days_in_month": 17.0,
+            },
+        ),
+    ],
+)
+def test_absence_deduction_rejects_inconsistent_inputs(function, kwargs):
+    with pytest.raises(ValueError):
+        function(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("mode", "weeks"),
+    [
+        (ContractYearMode.COMPLETE, 52.0),
+        (ContractYearMode.INCOMPLETE, 46.0),
+        (ContractYearMode.INCOMPLETE, 37.0),
+    ],
+)
+def test_validate_regular_contract_weeks_accepts_official_modes(mode, weeks):
+    validate_regular_contract_weeks(mode=mode, weeks_per_year=weeks)
+
+
+@pytest.mark.parametrize(
+    ("mode", "weeks"),
+    [
+        (ContractYearMode.COMPLETE, 45.0),
+        (ContractYearMode.INCOMPLETE, 52.0),
+        (ContractYearMode.INCOMPLETE, 47.0),
+    ],
+)
+def test_validate_regular_contract_weeks_rejects_inconsistent_modes(mode, weeks):
+    with pytest.raises(ValueError):
+        validate_regular_contract_weeks(mode=mode, weeks_per_year=weeks)
 
 
 def test_contract_monthly_hours():

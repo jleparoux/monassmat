@@ -94,6 +94,11 @@ html[data-theme="dark"] .preview { background: #0b1220; border-color: #1f2937; c
 html[data-theme="dark"] .preview__value { color: var(--text); }
 html[data-theme="dark"] .notice { color: #6ee7b7; }
 html[data-theme="dark"] .notice--error { color: #fca5a5; }
+html[data-theme="dark"] .notice--warning {
+  border-color: rgba(245,158,11,0.45);
+  background: rgba(245,158,11,0.12);
+  color: #fcd34d;
+}
 html[data-theme="dark"] .action-grid__item { background: var(--card); }
 html[data-theme="dark"] .action-grid__item--primary { background: #1e3a8a; color: #93c5fd; }
 html[data-theme="dark"] .action-grid__item:hover:not(.action-grid__item--primary) { background: #172554; }
@@ -734,6 +739,11 @@ a { color: inherit; }
   border-color: rgba(220,38,38,0.3);
   background: rgba(248,113,113,0.12);
   color: #991b1b;
+}
+.notice--warning {
+  border-color: rgba(217,119,6,0.35);
+  background: rgba(245,158,11,0.12);
+  color: #92400e;
 }
 
 .modal {

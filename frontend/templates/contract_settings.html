@@ -50,21 +50,23 @@
       </div>
 
       <label class="field">
-        <span>Mode d'annee</span>
+        <span>Type d'accueil regulier</span>
         <select name="year_mode" required>
           {% for mode in year_modes %}
-            <option value="{{ mode }}" {% if mode == contract.year_mode.value %}selected{% endif %}>{{ mode }}</option>
+            <option value="{{ mode }}" {% if mode == contract.year_mode.value %}selected{% endif %}>
+              {% if mode == "complete" %}Accueil sur 52 semaines{% else %}Accueil sur 46 semaines ou moins{% endif %}
+            </option>
           {% endfor %}
         </select>
       </label>
 
       <div class="highlight-block">
-        <span class="label">Conges payes annuels (calcul)</span>
+        <span class="label">Conges payes (estimation historique non fiabilisee)</span>
         <span class="value">{{ paid_leave_days_annual }} jours</span>
       </div>
 
       <label class="field">
-        <span>Tarif horaire</span>
+        <span>Tarif horaire net de base</span>
         <input name="hourly_rate" type="number" step="0.01" value="{{ contract.hourly_rate }}" required />
       </label>
 
@@ -74,14 +76,14 @@
           <input name="days_per_week" type="number" step="1" value="{{ contract.days_per_week or '' }}" />
         </label>
         <label class="field">
-          <span>Seuil majoration</span>
+          <span>Ancien seuil quotidien (suivi non declaratif)</span>
           <input name="majoration_threshold" type="number" step="0.01" value="{{ contract.majoration_threshold or '' }}" />
         </label>
       </div>
 
       <div class="field-group">
         <label class="field">
-          <span>Taux majoration</span>
+          <span>Ancien coefficient de majoration (ex. 1,25)</span>
           <input name="majoration_rate" type="number" step="0.01" value="{{ contract.majoration_rate or '' }}" />
         </label>
         <label class="field">

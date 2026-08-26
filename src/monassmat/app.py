@@ -29,6 +29,7 @@ from .calculations import (
     paid_leave_value,
     parse_holidays_response,
     unpaid_leave_deduction,
+    validate_regular_contract_weeks,
     workday_totals,
 )
 from .calculations import (
@@ -109,6 +110,26 @@ def parse_optional_int(value: str | None) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def parse_regular_contract_mode(
+    year_mode: str,
+    weeks_per_year: str,
+) -> tuple[ContractYearMode, float]:
+    try:
+        model_mode = ContractYearMode(year_mode)
+        calc_mode = CalcContractYearMode(year_mode)
+        weeks = float(weeks_per_year)
+        validate_regular_contract_weeks(mode=calc_mode, weeks_per_year=weeks)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Le type d'accueil et le nombre de semaines sont incoherents: "
+                "52 semaines exactement, ou 46 semaines ou moins."
+            ),
+        ) from exc
+    return model_mode, weeks
 
 
 def parse_days_list(value: str) -> list[date]:
@@ -735,6 +756,11 @@ def save_contract_settings(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
 
+    parsed_year_mode, parsed_weeks_per_year = parse_regular_contract_mode(
+        year_mode,
+        weeks_per_year,
+    )
+
     previous_values = {
         "hours_per_week": contract.hours_per_week,
         "weeks_per_year": contract.weeks_per_year,
@@ -752,8 +778,8 @@ def save_contract_settings(
     contract.start_date = date_from_iso(start_date)
     contract.end_date = date_from_iso(end_date) if end_date else None
     contract.hours_per_week = float(hours_per_week)
-    contract.weeks_per_year = float(weeks_per_year)
-    contract.year_mode = ContractYearMode(year_mode)
+    contract.weeks_per_year = parsed_weeks_per_year
+    contract.year_mode = parsed_year_mode
     contract.hourly_rate = float(hourly_rate)
     contract.days_per_week = parse_optional_int(days_per_week)
     contract.majoration_threshold = parse_optional_float(majoration_threshold)
@@ -884,6 +910,11 @@ def save_settings_snapshot(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
 
+    parsed_year_mode, parsed_weeks_per_year = parse_regular_contract_mode(
+        year_mode,
+        weeks_per_year,
+    )
+
     original_valid_from_date = date_from_iso(original_valid_from)
     valid_from_date = date_from_iso(valid_from)
     snapshot = crud.get_settings_snapshot(
@@ -922,8 +953,8 @@ def save_settings_snapshot(
         contract_id=contract_id,
         valid_from=valid_from_date,
         hours_per_week=float(hours_per_week),
-        weeks_per_year=float(weeks_per_year),
-        year_mode=ContractYearMode(year_mode),
+        weeks_per_year=parsed_weeks_per_year,
+        year_mode=parsed_year_mode,
         hourly_rate=float(hourly_rate),
         days_per_week=parse_optional_int(days_per_week),
         majoration_threshold=parse_optional_float(majoration_threshold),
@@ -1571,6 +1602,11 @@ def create_contract(
     salary_net_ceiling: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    parsed_year_mode, parsed_weeks_per_year = parse_regular_contract_mode(
+        year_mode,
+        weeks_per_year,
+    )
+
     if child_id:
         child = crud.get_child(db, int(child_id))
         if not child:
@@ -1588,8 +1624,8 @@ def create_contract(
         start_date=date_from_iso(start_date),
         end_date=date_from_iso(end_date) if end_date else None,
         hours_per_week=float(hours_per_week),
-        weeks_per_year=float(weeks_per_year),
-        year_mode=ContractYearMode(year_mode),
+        weeks_per_year=parsed_weeks_per_year,
+        year_mode=parsed_year_mode,
         hourly_rate=float(hourly_rate),
         days_per_week=parse_optional_int(days_per_week),
         majoration_threshold=parse_optional_float(majoration_threshold),
