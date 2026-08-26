@@ -412,6 +412,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
+    { name = "starlette" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -434,7 +435,7 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", marker = "extra == 'db-sqlite'", specifier = ">=0.20" },
     { name = "alembic", specifier = ">=1.13" },
-    { name = "fastapi", specifier = ">=0.110" },
+    { name = "fastapi", specifier = ">=0.110,<0.136" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'db-postgres'", specifier = ">=3.1" },
@@ -445,6 +446,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "starlette", specifier = ">=0.37,<1.0" },
     { name = "types-python-dateutil", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
 ]

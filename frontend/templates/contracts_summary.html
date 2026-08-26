@@ -14,7 +14,7 @@
   {% for item in items if item.is_active %}
     {% set pct = ((item.days_entered / item.days_expected) * 100) | round | int if item.days_expected > 0 else 0 %}
     {% set pct_capped = [pct, 100] | min %}
-    {% set bar_cls = "progress-bar__fill--ok" if item.days_entered >= (item.days_expected * 0.8) else ("progress-bar__fill--warn" if item.days_expected > 0 else "progress-bar__fill--neutral") %}
+    {% set bar_cls = "progress-bar__fill--neutral" if item.days_expected == 0 else ("progress-bar__fill--ok" if item.days_entered >= (item.days_expected * 0.8) else "progress-bar__fill--warn") %}
     {% set count_cls = "text-ok" if item.days_entered >= item.days_expected else "muted" %}
     <article class="card">
       <div class="card__header">
@@ -70,7 +70,7 @@
           <div class="card__header">
             <div>
               <div class="title">{{ item.child_name }}{% if item.name %} · {{ item.name }}{% endif %}</div>
-              <div class="muted">Clos le {{ item.end_date }}</div>
+              <div class="muted">Clos le {{ item.end_date.strftime("%d/%m/%Y") if item.end_date else "—" }}</div>
             </div>
             <span class="badge">Clos</span>
           </div>

@@ -5,7 +5,8 @@ description = "MonAssmat - le suivi simplifié des contrats d’assistante mater
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "fastapi>=0.110",
+  "fastapi>=0.110,<0.136",
+  "starlette>=0.37,<1.0",
   "uvicorn[standard]>=0.27",
   "pydantic>=2.6",
   "pydantic-settings>=2.2",
