@@ -2,12 +2,11 @@ services:
   db:
     image: postgres:16-alpine
     container_name: monassmat-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: monassmat
       POSTGRES_PASSWORD: monassmat
       POSTGRES_DB: monassmat
-    ports:
-      - "5433:5432"
     volumes:
       - ${POSTGRES_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
     healthcheck:
@@ -15,12 +14,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: monassmat-app
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://monassmat:monassmat@db:5432/monassmat
       APP_NAME: MonAssmat
@@ -30,3 +35,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
