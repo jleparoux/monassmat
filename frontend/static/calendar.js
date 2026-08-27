@@ -7,6 +7,7 @@
 
   const monthTitle = document.getElementById("monthTitle");
   const summaryPeriod = document.getElementById("summaryPeriod");
+  const pajemploiLink = document.getElementById("pajemploiLink");
   const prevBtn = document.getElementById("prevMonth");
   const nextBtn = document.getElementById("nextMonth");
   const monthPicker = document.getElementById("monthPicker");
@@ -109,6 +110,11 @@
     if (!monthPickerLabel) return;
     const label = `${MONTH_NAMES[current.getMonth()]} ${current.getFullYear()}`;
     monthPickerLabel.textContent = label;
+  }
+
+  function updatePajemploiLink() {
+    if (!pajemploiLink) return;
+    pajemploiLink.href = `/contracts/${contractId}/pajemploi?month=${ymd(startOfMonth(current))}`;
   }
 
 
@@ -517,6 +523,7 @@
     applySelectionClasses();
     updateSelectionUI();
     updateMonthPickerLabel();
+    updatePajemploiLink();
     updateMonthButtons();
     updateYearSelection();
     updateYearHeader();

@@ -735,8 +735,9 @@ def build_pajemploi_preparation(contract_id: int, month: date) -> dict:
         )
         if scheduled_days_per_week == 0:
             blockers.append(
-                "Le planning hebdomadaire doit etre complete avant de preparer "
-                "la declaration."
+                "Le planning hebdomadaire contractuel (lundi a dimanche) doit "
+                "etre complete avant de preparer la declaration; les saisies "
+                "du calendrier mensuel ne le remplacent pas."
             )
             calculation_context_supported = False
 
