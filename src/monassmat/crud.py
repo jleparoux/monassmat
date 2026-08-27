@@ -49,6 +49,13 @@ def upsert_settings_snapshot(
     year_mode: ContractYearMode,
     hourly_rate: float,
     days_per_week: int | None,
+    monday_hours: float | None,
+    tuesday_hours: float | None,
+    wednesday_hours: float | None,
+    thursday_hours: float | None,
+    friday_hours: float | None,
+    saturday_hours: float | None,
+    sunday_hours: float | None,
     majoration_threshold: float | None,
     majoration_rate: float | None,
     fee_meal_amount: float | None,
@@ -66,6 +73,13 @@ def upsert_settings_snapshot(
         existing.year_mode = year_mode
         existing.hourly_rate = hourly_rate
         existing.days_per_week = days_per_week
+        existing.monday_hours = monday_hours
+        existing.tuesday_hours = tuesday_hours
+        existing.wednesday_hours = wednesday_hours
+        existing.thursday_hours = thursday_hours
+        existing.friday_hours = friday_hours
+        existing.saturday_hours = saturday_hours
+        existing.sunday_hours = sunday_hours
         existing.majoration_threshold = majoration_threshold
         existing.majoration_rate = majoration_rate
         existing.fee_meal_amount = fee_meal_amount
@@ -81,6 +95,13 @@ def upsert_settings_snapshot(
         year_mode=year_mode,
         hourly_rate=hourly_rate,
         days_per_week=days_per_week,
+        monday_hours=monday_hours,
+        tuesday_hours=tuesday_hours,
+        wednesday_hours=wednesday_hours,
+        thursday_hours=thursday_hours,
+        friday_hours=friday_hours,
+        saturday_hours=saturday_hours,
+        sunday_hours=sunday_hours,
         majoration_threshold=majoration_threshold,
         majoration_rate=majoration_rate,
         fee_meal_amount=fee_meal_amount,

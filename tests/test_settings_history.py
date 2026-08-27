@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from monassmat.app import summarize_period
+from monassmat.app import snapshot_from_contract, snapshot_from_row, summarize_period
 from monassmat.calculations import ContractFacts, contract_monthly_hours
 from monassmat.models import ContractYearMode, WorkdayKind
 
@@ -22,6 +22,13 @@ class DummyContract:
     fee_maintenance_amount: float | None
     salary_net_ceiling: float | None
     year_mode: ContractYearMode = ContractYearMode.COMPLETE
+    monday_hours: float | None = None
+    tuesday_hours: float | None = None
+    wednesday_hours: float | None = None
+    thursday_hours: float | None = None
+    friday_hours: float | None = None
+    saturday_hours: float | None = None
+    sunday_hours: float | None = None
 
 
 @dataclass
@@ -46,6 +53,61 @@ class DummySnapshot:
     fee_maintenance_amount: float | None
     salary_net_ceiling: float | None
     year_mode: ContractYearMode = ContractYearMode.COMPLETE
+    monday_hours: float | None = None
+    tuesday_hours: float | None = None
+    wednesday_hours: float | None = None
+    thursday_hours: float | None = None
+    friday_hours: float | None = None
+    saturday_hours: float | None = None
+    sunday_hours: float | None = None
+
+
+def test_schedule_is_kept_in_contract_and_snapshot_settings():
+    contract = DummyContract(
+        start_date=date(2025, 1, 1),
+        end_date=None,
+        hours_per_week=40.0,
+        weeks_per_year=52.0,
+        hourly_rate=5.0,
+        days_per_week=5,
+        majoration_threshold=None,
+        majoration_rate=None,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        monday_hours=8.0,
+        tuesday_hours=8.0,
+        wednesday_hours=8.0,
+        thursday_hours=8.0,
+        friday_hours=8.0,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+    snapshot = DummySnapshot(
+        valid_from=date(2025, 1, 1),
+        hours_per_week=35.0,
+        weeks_per_year=52.0,
+        hourly_rate=5.0,
+        days_per_week=5,
+        majoration_threshold=None,
+        majoration_rate=None,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        monday_hours=7.0,
+        tuesday_hours=7.0,
+        wednesday_hours=7.0,
+        thursday_hours=7.0,
+        friday_hours=7.0,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+
+    contract_settings = snapshot_from_contract(contract, date(2025, 1, 1))
+    assert contract_settings["monday_hours"] == 8.0
+    assert contract_settings["sunday_hours"] == 0.0
+    assert snapshot_from_row(snapshot)["monday_hours"] == 7.0
+    assert snapshot_from_row(snapshot)["sunday_hours"] == 0.0
 
 
 def test_settings_history_affects_salary_and_fees():

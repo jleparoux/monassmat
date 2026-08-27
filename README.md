@@ -12,6 +12,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Creation contrat: `/contracts/new`
 - Types de journee: travail, absence, conge sans solde, jour ferie
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
+- Planning contractuel: les heures prevues sont renseignees pour chacun des sept jours et leur total doit correspondre aux heures hebdomadaires. Les anciens contrats restent volontairement sans planning jusqu'a leur prochaine saisie: aucune valeur n'est inventee pendant la migration.
 
 ## Statut des calculs de remuneration
 
@@ -25,8 +26,9 @@ Regles implementees et testees dans `calculations.py`:
   jusqu'a 45 h, heures majorees au-dela de 45 h;
 - formules proportionnelles de deduction d'absence prevues a l'article 111.
 
-Les deux dernieres regles ne sont pas encore branchees au recapitulatif, car le
-modele doit d'abord enregistrer le planning contractuel par jour. Le compteur de
+Les deux dernieres regles ne sont pas encore branchees au recapitulatif. Le
+planning contractuel par jour est maintenant enregistre; son exploitation dans
+le recapitulatif constitue l'etape suivante. Le compteur de
 conges payes visible dans l'interface est une estimation historique non
 fiabilisee, notamment pour les periodes de reference partiellement travaillees.
 

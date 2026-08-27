@@ -117,6 +117,46 @@ def validate_regular_contract_weeks(
     raise ValueError(f"Unknown mode: {mode}")
 
 
+def weekly_schedule_total(
+    daily_hours: Iterable[float | None],
+) -> float | None:
+    """Return the total of a Monday-to-Sunday schedule.
+
+    Seven ``None`` values represent a legacy contract whose schedule has not
+    been entered yet. A partially missing schedule is rejected because it
+    cannot safely support absence calculations.
+    """
+    items = tuple(daily_hours)
+    if len(items) != 7:
+        raise ValueError("weekly schedule must contain exactly seven days")
+    if all(value is None for value in items):
+        return None
+    if any(value is None for value in items):
+        raise ValueError("weekly schedule must define all seven days")
+
+    values = tuple(float(value) for value in items if value is not None)
+    if any(value < 0 for value in values):
+        raise ValueError("daily scheduled hours must be >= 0")
+    return sum(values)
+
+
+def validate_weekly_schedule(
+    daily_hours: Iterable[float | None],
+    *,
+    hours_per_week: float,
+    required: bool,
+) -> None:
+    """Validate an explicit weekly schedule against contractual hours."""
+    _assert_positive("hours_per_week", hours_per_week)
+    total = weekly_schedule_total(daily_hours)
+    if total is None:
+        if required:
+            raise ValueError("weekly schedule is required")
+        return
+    if not math.isclose(total, hours_per_week, abs_tol=0.01):
+        raise ValueError("weekly schedule total must match hours_per_week")
+
+
 def hours_in_period(
     workdays: Iterable[WorkdayFacts],
     period: Period,

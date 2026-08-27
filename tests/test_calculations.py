@@ -20,6 +20,8 @@ from monassmat.calculations import (
     paid_leave_value,
     unpaid_leave_deduction,
     validate_regular_contract_weeks,
+    validate_weekly_schedule,
+    weekly_schedule_total,
     workday_totals,
 )
 
@@ -121,6 +123,50 @@ def test_validate_regular_contract_weeks_accepts_official_modes(mode, weeks):
 def test_validate_regular_contract_weeks_rejects_inconsistent_modes(mode, weeks):
     with pytest.raises(ValueError):
         validate_regular_contract_weeks(mode=mode, weeks_per_year=weeks)
+
+
+def test_weekly_schedule_total_accepts_seven_explicit_days():
+    schedule = (8.0, 8.0, 0.0, 8.0, 8.0, 0.0, 0.0)
+
+    assert weekly_schedule_total(schedule) == 32.0
+
+
+def test_weekly_schedule_total_returns_none_when_entire_schedule_is_missing():
+    schedule = (None, None, None, None, None, None, None)
+
+    assert weekly_schedule_total(schedule) is None
+
+
+def test_weekly_schedule_total_rejects_partially_missing_schedule():
+    schedule = (8.0, 8.0, None, 8.0, 8.0, 0.0, 0.0)
+
+    with pytest.raises(ValueError):
+        weekly_schedule_total(schedule)
+
+
+def test_validate_weekly_schedule_matches_contract_hours():
+    validate_weekly_schedule(
+        (8.0, 8.0, 0.0, 8.0, 8.0, 0.0, 0.0),
+        hours_per_week=32.0,
+        required=True,
+    )
+
+
+def test_validate_weekly_schedule_rejects_wrong_total():
+    with pytest.raises(ValueError):
+        validate_weekly_schedule(
+            (8.0, 8.0, 0.0, 8.0, 8.0, 0.0, 0.0),
+            hours_per_week=40.0,
+            required=True,
+        )
+
+
+def test_validate_weekly_schedule_allows_missing_legacy_schedule():
+    validate_weekly_schedule(
+        (None, None, None, None, None, None, None),
+        hours_per_week=40.0,
+        required=False,
+    )
 
 
 def test_contract_monthly_hours():

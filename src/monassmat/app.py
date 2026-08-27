@@ -30,6 +30,7 @@ from .calculations import (
     parse_holidays_response,
     unpaid_leave_deduction,
     validate_regular_contract_weeks,
+    validate_weekly_schedule,
     workday_totals,
 )
 from .calculations import (
@@ -83,6 +84,15 @@ MONTH_NAMES = [
     "Novembre",
     "Décembre",
 ]
+WEEKLY_SCHEDULE_FIELDS = (
+    "monday_hours",
+    "tuesday_hours",
+    "wednesday_hours",
+    "thursday_hours",
+    "friday_hours",
+    "saturday_hours",
+    "sunday_hours",
+)
 
 
 def parse_time(value: str | None, field_name: str) -> time | None:
@@ -132,6 +142,51 @@ def parse_regular_contract_mode(
     return model_mode, weeks
 
 
+def parse_weekly_schedule(
+    *,
+    hours_per_week: float,
+    required: bool,
+    monday_hours: str | None,
+    tuesday_hours: str | None,
+    wednesday_hours: str | None,
+    thursday_hours: str | None,
+    friday_hours: str | None,
+    saturday_hours: str | None,
+    sunday_hours: str | None,
+) -> dict[str, float | None]:
+    raw_values = (
+        monday_hours,
+        tuesday_hours,
+        wednesday_hours,
+        thursday_hours,
+        friday_hours,
+        saturday_hours,
+        sunday_hours,
+    )
+    try:
+        if all(value is None or value == "" for value in raw_values):
+            schedule: tuple[float | None, ...] = (None,) * 7
+        else:
+            schedule = tuple(
+                float(value) if value is not None and value != "" else 0.0
+                for value in raw_values
+            )
+        validate_weekly_schedule(
+            schedule,
+            hours_per_week=hours_per_week,
+            required=required,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Le planning doit couvrir les sept jours et son total doit "
+                "correspondre aux heures hebdomadaires du contrat."
+            ),
+        ) from exc
+    return dict(zip(WEEKLY_SCHEDULE_FIELDS, schedule, strict=True))
+
+
 def parse_days_list(value: str) -> list[date]:
     if not value:
         raise HTTPException(status_code=400, detail="Missing days")
@@ -164,6 +219,13 @@ def snapshot_from_contract(contract, valid_from: date) -> dict:
         "year_mode": contract.year_mode,
         "hourly_rate": contract.hourly_rate,
         "days_per_week": contract.days_per_week,
+        "monday_hours": contract.monday_hours,
+        "tuesday_hours": contract.tuesday_hours,
+        "wednesday_hours": contract.wednesday_hours,
+        "thursday_hours": contract.thursday_hours,
+        "friday_hours": contract.friday_hours,
+        "saturday_hours": contract.saturday_hours,
+        "sunday_hours": contract.sunday_hours,
         "majoration_threshold": contract.majoration_threshold,
         "majoration_rate": contract.majoration_rate,
         "fee_meal_amount": contract.fee_meal_amount,
@@ -180,6 +242,13 @@ def snapshot_from_row(row) -> dict:
         "year_mode": row.year_mode,
         "hourly_rate": row.hourly_rate,
         "days_per_week": row.days_per_week,
+        "monday_hours": row.monday_hours,
+        "tuesday_hours": row.tuesday_hours,
+        "wednesday_hours": row.wednesday_hours,
+        "thursday_hours": row.thursday_hours,
+        "friday_hours": row.friday_hours,
+        "saturday_hours": row.saturday_hours,
+        "sunday_hours": row.sunday_hours,
         "majoration_threshold": row.majoration_threshold,
         "majoration_rate": row.majoration_rate,
         "fee_meal_amount": row.fee_meal_amount,
@@ -745,6 +814,13 @@ def save_contract_settings(
     year_mode: str = Form(...),
     hourly_rate: str = Form(...),
     days_per_week: str | None = Form(None),
+    monday_hours: str | None = Form(None),
+    tuesday_hours: str | None = Form(None),
+    wednesday_hours: str | None = Form(None),
+    thursday_hours: str | None = Form(None),
+    friday_hours: str | None = Form(None),
+    saturday_hours: str | None = Form(None),
+    sunday_hours: str | None = Form(None),
     majoration_threshold: str | None = Form(None),
     majoration_rate: str | None = Form(None),
     fee_meal_amount: str | None = Form(None),
@@ -760,6 +836,18 @@ def save_contract_settings(
         year_mode,
         weeks_per_year,
     )
+    parsed_hours_per_week = float(hours_per_week)
+    parsed_schedule = parse_weekly_schedule(
+        hours_per_week=parsed_hours_per_week,
+        required=False,
+        monday_hours=monday_hours,
+        tuesday_hours=tuesday_hours,
+        wednesday_hours=wednesday_hours,
+        thursday_hours=thursday_hours,
+        friday_hours=friday_hours,
+        saturday_hours=saturday_hours,
+        sunday_hours=sunday_hours,
+    )
 
     previous_values = {
         "hours_per_week": contract.hours_per_week,
@@ -767,6 +855,13 @@ def save_contract_settings(
         "year_mode": contract.year_mode,
         "hourly_rate": contract.hourly_rate,
         "days_per_week": contract.days_per_week,
+        "monday_hours": contract.monday_hours,
+        "tuesday_hours": contract.tuesday_hours,
+        "wednesday_hours": contract.wednesday_hours,
+        "thursday_hours": contract.thursday_hours,
+        "friday_hours": contract.friday_hours,
+        "saturday_hours": contract.saturday_hours,
+        "sunday_hours": contract.sunday_hours,
         "majoration_threshold": contract.majoration_threshold,
         "majoration_rate": contract.majoration_rate,
         "fee_meal_amount": contract.fee_meal_amount,
@@ -777,11 +872,13 @@ def save_contract_settings(
     contract.name = contract_name.strip() if contract_name else None
     contract.start_date = date_from_iso(start_date)
     contract.end_date = date_from_iso(end_date) if end_date else None
-    contract.hours_per_week = float(hours_per_week)
+    contract.hours_per_week = parsed_hours_per_week
     contract.weeks_per_year = parsed_weeks_per_year
     contract.year_mode = parsed_year_mode
     contract.hourly_rate = float(hourly_rate)
     contract.days_per_week = parse_optional_int(days_per_week)
+    for field_name, value in parsed_schedule.items():
+        setattr(contract, field_name, value)
     contract.majoration_threshold = parse_optional_float(majoration_threshold)
     contract.majoration_rate = parse_optional_float(majoration_rate)
     contract.fee_meal_amount = parse_optional_float(fee_meal_amount)
@@ -800,6 +897,13 @@ def save_contract_settings(
             year_mode=previous_values["year_mode"],
             hourly_rate=previous_values["hourly_rate"],
             days_per_week=previous_values["days_per_week"],
+            monday_hours=previous_values["monday_hours"],
+            tuesday_hours=previous_values["tuesday_hours"],
+            wednesday_hours=previous_values["wednesday_hours"],
+            thursday_hours=previous_values["thursday_hours"],
+            friday_hours=previous_values["friday_hours"],
+            saturday_hours=previous_values["saturday_hours"],
+            sunday_hours=previous_values["sunday_hours"],
             majoration_threshold=previous_values["majoration_threshold"],
             majoration_rate=previous_values["majoration_rate"],
             fee_meal_amount=previous_values["fee_meal_amount"],
@@ -815,6 +919,13 @@ def save_contract_settings(
         year_mode=contract.year_mode,
         hourly_rate=contract.hourly_rate,
         days_per_week=contract.days_per_week,
+        monday_hours=contract.monday_hours,
+        tuesday_hours=contract.tuesday_hours,
+        wednesday_hours=contract.wednesday_hours,
+        thursday_hours=contract.thursday_hours,
+        friday_hours=contract.friday_hours,
+        saturday_hours=contract.saturday_hours,
+        sunday_hours=contract.sunday_hours,
         majoration_threshold=contract.majoration_threshold,
         majoration_rate=contract.majoration_rate,
         fee_meal_amount=contract.fee_meal_amount,
@@ -899,6 +1010,13 @@ def save_settings_snapshot(
     year_mode: str = Form(...),
     hourly_rate: str = Form(...),
     days_per_week: str | None = Form(None),
+    monday_hours: str | None = Form(None),
+    tuesday_hours: str | None = Form(None),
+    wednesday_hours: str | None = Form(None),
+    thursday_hours: str | None = Form(None),
+    friday_hours: str | None = Form(None),
+    saturday_hours: str | None = Form(None),
+    sunday_hours: str | None = Form(None),
     majoration_threshold: str | None = Form(None),
     majoration_rate: str | None = Form(None),
     fee_meal_amount: str | None = Form(None),
@@ -913,6 +1031,18 @@ def save_settings_snapshot(
     parsed_year_mode, parsed_weeks_per_year = parse_regular_contract_mode(
         year_mode,
         weeks_per_year,
+    )
+    parsed_hours_per_week = float(hours_per_week)
+    parsed_schedule = parse_weekly_schedule(
+        hours_per_week=parsed_hours_per_week,
+        required=False,
+        monday_hours=monday_hours,
+        tuesday_hours=tuesday_hours,
+        wednesday_hours=wednesday_hours,
+        thursday_hours=thursday_hours,
+        friday_hours=friday_hours,
+        saturday_hours=saturday_hours,
+        sunday_hours=sunday_hours,
     )
 
     original_valid_from_date = date_from_iso(original_valid_from)
@@ -952,11 +1082,12 @@ def save_settings_snapshot(
         db,
         contract_id=contract_id,
         valid_from=valid_from_date,
-        hours_per_week=float(hours_per_week),
+        hours_per_week=parsed_hours_per_week,
         weeks_per_year=parsed_weeks_per_year,
         year_mode=parsed_year_mode,
         hourly_rate=float(hourly_rate),
         days_per_week=parse_optional_int(days_per_week),
+        **parsed_schedule,
         majoration_threshold=parse_optional_float(majoration_threshold),
         majoration_rate=parse_optional_float(majoration_rate),
         fee_meal_amount=parse_optional_float(fee_meal_amount),
@@ -1595,6 +1726,13 @@ def create_contract(
     year_mode: str = Form(...),
     hourly_rate: str = Form(...),
     days_per_week: str | None = Form(None),
+    monday_hours: str | None = Form(None),
+    tuesday_hours: str | None = Form(None),
+    wednesday_hours: str | None = Form(None),
+    thursday_hours: str | None = Form(None),
+    friday_hours: str | None = Form(None),
+    saturday_hours: str | None = Form(None),
+    sunday_hours: str | None = Form(None),
     majoration_threshold: str | None = Form(None),
     majoration_rate: str | None = Form(None),
     fee_meal_amount: str | None = Form(None),
@@ -1605,6 +1743,18 @@ def create_contract(
     parsed_year_mode, parsed_weeks_per_year = parse_regular_contract_mode(
         year_mode,
         weeks_per_year,
+    )
+    parsed_hours_per_week = float(hours_per_week)
+    parsed_schedule = parse_weekly_schedule(
+        hours_per_week=parsed_hours_per_week,
+        required=True,
+        monday_hours=monday_hours,
+        tuesday_hours=tuesday_hours,
+        wednesday_hours=wednesday_hours,
+        thursday_hours=thursday_hours,
+        friday_hours=friday_hours,
+        saturday_hours=saturday_hours,
+        sunday_hours=sunday_hours,
     )
 
     if child_id:
@@ -1623,11 +1773,12 @@ def create_contract(
         name=contract_name.strip() if contract_name else None,
         start_date=date_from_iso(start_date),
         end_date=date_from_iso(end_date) if end_date else None,
-        hours_per_week=float(hours_per_week),
+        hours_per_week=parsed_hours_per_week,
         weeks_per_year=parsed_weeks_per_year,
         year_mode=parsed_year_mode,
         hourly_rate=float(hourly_rate),
         days_per_week=parse_optional_int(days_per_week),
+        **parsed_schedule,
         majoration_threshold=parse_optional_float(majoration_threshold),
         majoration_rate=parse_optional_float(majoration_rate),
         fee_meal_amount=parse_optional_float(fee_meal_amount),
@@ -1646,6 +1797,13 @@ def create_contract(
         year_mode=contract.year_mode,
         hourly_rate=contract.hourly_rate,
         days_per_week=contract.days_per_week,
+        monday_hours=contract.monday_hours,
+        tuesday_hours=contract.tuesday_hours,
+        wednesday_hours=contract.wednesday_hours,
+        thursday_hours=contract.thursday_hours,
+        friday_hours=contract.friday_hours,
+        saturday_hours=contract.saturday_hours,
+        sunday_hours=contract.sunday_hours,
         majoration_threshold=contract.majoration_threshold,
         majoration_rate=contract.majoration_rate,
         fee_meal_amount=contract.fee_meal_amount,
