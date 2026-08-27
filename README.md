@@ -24,13 +24,21 @@ Regles implementees et testees dans `calculations.py`:
 - mensualisation: heures hebdomadaires x semaines programmees / 12 x taux;
 - classification hebdomadaire: heures complementaires au-dela du contrat et
   jusqu'a 45 h, heures majorees au-dela de 45 h;
-- formules proportionnelles de deduction d'absence prevues a l'article 111.
+- deduction d'absence en accueil sur 52 semaines: salaire mensualise x heures
+  d'absence / heures exactes du planning dans le mois.
 
-Les deux dernieres regles ne sont pas encore branchees au recapitulatif. Le
-planning contractuel par jour est maintenant enregistre; son exploitation dans
-le recapitulatif constitue l'etape suivante. Le compteur de
+La classification hebdomadaire et la deduction sur 52 semaines sont branchees
+au recapitulatif. En accueil sur 46 semaines ou moins, l'application ne calcule
+pas encore la deduction: le planning hebdomadaire ne permet pas de connaitre les
+semaines d'accueil reellement programmees. L'interface signale cette donnee
+manquante au lieu de produire une approximation. Le compteur de
 conges payes visible dans l'interface est une estimation historique non
 fiabilisee, notamment pour les periodes de reference partiellement travaillees.
+
+Le coefficient de majoration des heures au-dela de 45 h/semaine est optionnel,
+mais doit etre au minimum de 1,10 lorsqu'il est renseigne. Tant que la fiche de
+preparation Pajemploi n'est pas terminee, le total affiche reste un repere de
+suivi et non un salaire net a declarer.
 
 Sources officielles:
 - [Convention collective, articles 96.4 et 108 a 111](https://www.legifrance.gouv.fr/conv_coll/id/KALIARTI000043942282)

@@ -171,7 +171,8 @@ def test_settings_history_affects_salary_and_fees():
     assert summary.salary_base == (8.0 * 5.0) + (8.0 * 6.0)
     assert summary.fee_meal_total == 1.0
     assert summary.fee_maintenance_total == 2.5
-    assert summary.unpaid_leave_deduction == 1 * 4.0 * 6.0
+    assert summary.unpaid_leave_deduction == 0.0
+    assert summary.absence_deduction_reliable is False
 
     jan_days = 31
     first_span = 14
@@ -196,3 +197,232 @@ def test_settings_history_affects_salary_and_fees():
     )
     expected_theo = (theo_1 / jan_days) * first_span + (theo_2 / jan_days) * second_span
     assert summary.monthly_hours_theoretical == pytest.approx(expected_theo)
+
+
+def test_52_week_absence_deduction_uses_exact_month_schedule():
+    contract = DummyContract(
+        start_date=date(2025, 1, 1),
+        end_date=None,
+        hours_per_week=40.0,
+        weeks_per_year=52.0,
+        hourly_rate=5.0,
+        days_per_week=None,
+        majoration_threshold=None,
+        majoration_rate=None,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        monday_hours=8.0,
+        tuesday_hours=8.0,
+        wednesday_hours=8.0,
+        thursday_hours=8.0,
+        friday_hours=8.0,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+    workdays = [
+        DummyWorkday(
+            date=date(2025, 1, 6),
+            hours=0.0,
+            kind=WorkdayKind.UNPAID_LEAVE,
+        )
+    ]
+
+    summary = summarize_period(
+        contract,
+        workdays,
+        [],
+        start=date(2025, 1, 1),
+        end=date(2025, 1, 31),
+    )
+
+    monthly_salary = 40.0 * 52.0 / 12.0 * 5.0
+    january_2025_scheduled_hours = 23 * 8.0
+    assert summary.unpaid_leave_deduction == pytest.approx(
+        monthly_salary * 8.0 / january_2025_scheduled_hours
+    )
+    assert summary.absence_deduction_reliable is True
+
+
+def test_46_week_absence_stays_incomplete_without_programmed_weeks():
+    contract = DummyContract(
+        start_date=date(2025, 1, 1),
+        end_date=None,
+        hours_per_week=40.0,
+        weeks_per_year=44.0,
+        hourly_rate=5.0,
+        days_per_week=None,
+        majoration_threshold=None,
+        majoration_rate=None,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        year_mode=ContractYearMode.INCOMPLETE,
+        monday_hours=8.0,
+        tuesday_hours=8.0,
+        wednesday_hours=8.0,
+        thursday_hours=8.0,
+        friday_hours=8.0,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+    workdays = [
+        DummyWorkday(
+            date=date(2025, 1, 6),
+            hours=0.0,
+            kind=WorkdayKind.UNPAID_LEAVE,
+        )
+    ]
+
+    summary = summarize_period(
+        contract,
+        workdays,
+        [],
+        start=date(2025, 1, 1),
+        end=date(2025, 1, 31),
+    )
+
+    assert summary.unpaid_leave_deduction == 0.0
+    assert summary.absence_deduction_reliable is False
+    assert "semaines d'accueil programmees" in summary.absence_deduction_message
+
+
+def test_weekly_hours_are_classified_across_workdays():
+    contract = DummyContract(
+        start_date=date(2025, 1, 1),
+        end_date=None,
+        hours_per_week=32.0,
+        weeks_per_year=52.0,
+        hourly_rate=5.0,
+        days_per_week=None,
+        majoration_threshold=None,
+        majoration_rate=1.25,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        monday_hours=6.4,
+        tuesday_hours=6.4,
+        wednesday_hours=6.4,
+        thursday_hours=6.4,
+        friday_hours=6.4,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+    workdays = [
+        DummyWorkday(day, 10.0, WorkdayKind.NORMAL)
+        for day in (
+            date(2025, 1, 6),
+            date(2025, 1, 7),
+            date(2025, 1, 8),
+            date(2025, 1, 9),
+            date(2025, 1, 10),
+        )
+    ]
+
+    summary = summarize_period(
+        contract,
+        workdays,
+        [],
+        start=date(2025, 1, 1),
+        end=date(2025, 1, 31),
+    )
+
+    assert summary.hours_normal == 32.0
+    assert summary.hours_complementary == 13.0
+    assert summary.hours_majorated == 5.0
+    assert summary.salary_base == 50.0 * 5.0
+    assert summary.salary_majoration == 5.0 * 5.0 * 0.25
+    assert summary.majoration_rate_missing is False
+
+    contract.majoration_rate = None
+    summary_without_rate = summarize_period(
+        contract,
+        workdays,
+        [],
+        start=date(2025, 1, 1),
+        end=date(2025, 1, 31),
+    )
+    assert summary_without_rate.salary_majoration == 0.0
+    assert summary_without_rate.majoration_rate_missing is True
+
+
+def test_weekly_classification_uses_days_before_month_boundary():
+    contract = DummyContract(
+        start_date=date(2024, 12, 1),
+        end_date=None,
+        hours_per_week=32.0,
+        weeks_per_year=52.0,
+        hourly_rate=5.0,
+        days_per_week=None,
+        majoration_threshold=None,
+        majoration_rate=1.25,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        monday_hours=6.4,
+        tuesday_hours=6.4,
+        wednesday_hours=6.4,
+        thursday_hours=6.4,
+        friday_hours=6.4,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+    workdays = [
+        DummyWorkday(day, 10.0, WorkdayKind.NORMAL)
+        for day in (
+            date(2024, 12, 30),
+            date(2024, 12, 31),
+            date(2025, 1, 1),
+            date(2025, 1, 2),
+            date(2025, 1, 3),
+        )
+    ]
+
+    january = summarize_period(
+        contract,
+        workdays,
+        [],
+        start=date(2025, 1, 1),
+        end=date(2025, 1, 31),
+    )
+
+    assert january.hours_real == 30.0
+    assert january.hours_normal == 12.0
+    assert january.hours_complementary == 13.0
+    assert january.hours_majorated == 5.0
+
+
+def test_theoretical_salary_is_prorated_to_active_contract_days():
+    contract = DummyContract(
+        start_date=date(2025, 1, 15),
+        end_date=None,
+        hours_per_week=40.0,
+        weeks_per_year=52.0,
+        hourly_rate=5.0,
+        days_per_week=None,
+        majoration_threshold=None,
+        majoration_rate=None,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        monday_hours=8.0,
+        tuesday_hours=8.0,
+        wednesday_hours=8.0,
+        thursday_hours=8.0,
+        friday_hours=8.0,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+
+    summary = summarize_period(
+        contract,
+        [],
+        [],
+        start=date(2025, 1, 1),
+        end=date(2025, 1, 31),
+    )
+
+    full_month_salary = 40.0 * 52.0 / 12.0 * 5.0
+    assert summary.monthly_salary_theoretical == pytest.approx(
+        full_month_salary * 17 / 31
+    )

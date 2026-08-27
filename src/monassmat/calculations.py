@@ -48,16 +48,6 @@ class Period:
 
 
 @dataclass(frozen=True)
-class WorkdayTotals:
-    total_hours: float
-    normal_hours: float
-    majorated_hours: float
-    base_salary: float
-    majoration_salary: float
-    total_salary: float
-
-
-@dataclass(frozen=True)
 class WeeklyHoursBreakdown:
     normal_hours: float
     complementary_hours: float
@@ -157,6 +147,25 @@ def validate_weekly_schedule(
         raise ValueError("weekly schedule total must match hours_per_week")
 
 
+def validate_majoration_coefficient(coefficient: float | None) -> None:
+    """Validate the contractual coefficient for hours worked beyond 45/week."""
+    if coefficient is not None and coefficient < 1.10:
+        raise ValueError("majoration coefficient must be at least 1.10")
+
+
+def scheduled_hours_for_day(
+    daily_hours: Iterable[float | None],
+    day: date,
+) -> float | None:
+    """Return contractual hours for one weekday, or ``None`` for legacy data."""
+    schedule = tuple(daily_hours)
+    total = weekly_schedule_total(schedule)
+    if total is None:
+        return None
+    value = schedule[day.weekday()]
+    return float(value) if value is not None else None
+
+
 def hours_in_period(
     workdays: Iterable[WorkdayFacts],
     period: Period,
@@ -220,6 +229,59 @@ def classify_weekly_hours(
     )
 
 
+def allocate_weekly_hours(
+    workdays: Iterable[WorkdayFacts],
+    *,
+    contracted_hours: float,
+) -> dict[date, WeeklyHoursBreakdown]:
+    """Allocate a single week's hours chronologically between legal buckets.
+
+    Only normal workdays are considered. All included dates must belong to the
+    same Monday-to-Sunday week. This makes month-boundary allocation explicit:
+    hours exceeding the thresholds are assigned to the day on which they occur.
+    """
+    _assert_positive("contracted_hours", contracted_hours)
+    items = sorted(
+        (workday for workday in workdays if workday.kind == WorkdayKind.NORMAL),
+        key=lambda workday: workday.day,
+    )
+    if not items:
+        return {}
+
+    week_start = items[0].day.toordinal() - items[0].day.weekday()
+    if any(
+        workday.day.toordinal() - workday.day.weekday() != week_start
+        for workday in items
+    ):
+        raise ValueError("workdays must belong to the same week")
+    if len({workday.day for workday in items}) != len(items):
+        raise ValueError("workdays must have unique dates")
+    if any(workday.hours < 0 for workday in items):
+        raise ValueError("workday hours must be >= 0")
+
+    normal_remaining = min(contracted_hours, 45.0)
+    complementary_remaining = max(45.0 - normal_remaining, 0.0)
+    result: dict[date, WeeklyHoursBreakdown] = {}
+
+    for workday in items:
+        remaining = workday.hours
+        normal = min(remaining, normal_remaining)
+        remaining -= normal
+        normal_remaining -= normal
+
+        complementary = min(remaining, complementary_remaining)
+        remaining -= complementary
+        complementary_remaining -= complementary
+
+        result[workday.day] = WeeklyHoursBreakdown(
+            normal_hours=normal,
+            complementary_hours=complementary,
+            majorated_hours=remaining,
+        )
+
+    return result
+
+
 def _proportional_absence_deduction(
     *,
     monthly_salary: float,
@@ -273,88 +335,6 @@ def absence_deduction_46_weeks(
         absence_units=absence_days,
         scheduled_units_in_month=scheduled_days_in_month,
     )
-
-
-def workday_totals(
-    workdays: Iterable[WorkdayFacts],
-    *,
-    hourly_rate: float,
-    majoration_threshold: float | None = None,
-    majoration_rate: float | None = None,
-    include_kinds: set[WorkdayKind] | None = None,
-) -> WorkdayTotals:
-    if include_kinds is None:
-        include_kinds = {WorkdayKind.NORMAL}
-
-    _assert_positive("hourly_rate", hourly_rate)
-    apply_majoration = (
-        majoration_threshold is not None and majoration_rate is not None
-    )
-
-    total_hours = 0.0
-    normal_hours = 0.0
-    majorated_hours = 0.0
-    base_salary = 0.0
-    majoration_salary = 0.0
-
-    for wd in workdays:
-        if wd.kind not in include_kinds:
-            continue
-        if wd.hours < 0:
-            raise ValueError(f"Workday hours must be >= 0 (got {wd.hours})")
-
-        hours = wd.hours
-        total_hours += hours
-
-        if apply_majoration and majoration_threshold is not None:
-            if hours <= majoration_threshold:
-                normal = hours
-                majorated = 0.0
-            else:
-                normal = majoration_threshold
-                majorated = hours - majoration_threshold
-        else:
-            normal = hours
-            majorated = 0.0
-
-        normal_hours += normal
-        majorated_hours += majorated
-        base_salary += normal * hourly_rate
-        if apply_majoration and majoration_rate is not None:
-            majoration_salary += majorated * hourly_rate * majoration_rate
-
-    total_salary = base_salary + majoration_salary
-    return WorkdayTotals(
-        total_hours=total_hours,
-        normal_hours=normal_hours,
-        majorated_hours=majorated_hours,
-        base_salary=base_salary,
-        majoration_salary=majoration_salary,
-        total_salary=total_salary,
-    )
-
-
-def contract_daily_hours(hours_per_week: float, days_per_week: int | None) -> float | None:
-    if days_per_week is None or days_per_week <= 0:
-        return None
-    _assert_positive("hours_per_week", hours_per_week)
-    return hours_per_week / days_per_week
-
-
-def unpaid_leave_deduction(
-    unpaid_leave_days: int,
-    *,
-    hours_per_week: float,
-    days_per_week: int | None,
-    hourly_rate: float,
-) -> float:
-    if unpaid_leave_days <= 0:
-        return 0.0
-    daily_hours = contract_daily_hours(hours_per_week, days_per_week)
-    if daily_hours is None:
-        return 0.0
-    _assert_positive("hourly_rate", hourly_rate)
-    return unpaid_leave_days * daily_hours * hourly_rate
 
 
 # ---------------------------------------------------------------------------

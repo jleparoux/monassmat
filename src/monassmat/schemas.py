@@ -24,6 +24,7 @@ class MonthlySummaryOut(BaseModel):
     monthly_salary_theoretical: float
     hours_real: float
     hours_normal: float
+    hours_complementary: float
     hours_majorated: float
     hours_delta: float
     work_days: int
@@ -39,6 +40,9 @@ class MonthlySummaryOut(BaseModel):
     fee_meal_total: float = 0.0
     fee_maintenance_total: float = 0.0
     unpaid_leave_deduction: float = 0.0
+    absence_deduction_reliable: bool = True
+    absence_deduction_message: str = ""
+    majoration_rate_missing: bool = False
     total_estimated: float = 0.0
     average_hours_per_day: float = 0.0
     paid_leave_days_annual: int = 0

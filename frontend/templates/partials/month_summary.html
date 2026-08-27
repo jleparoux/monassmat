@@ -1,10 +1,15 @@
 <div class="summary-section">
   <div class="summary-title">Statistiques mensuelles</div>
   <div class="notice notice--warning">
-    Recapitulatif de suivi uniquement. Le montant a declarer doit encore etre
-    verifie dans Pajemploi: les absences et heures complementaires/majorees ne
-    suivent pas encore le planning contractuel hebdomadaire.
+    Recapitulatif de suivi uniquement. Les heures sont maintenant classees par
+    semaine, mais le salaire net total Pajemploi n'est pas encore calcule.
   </div>
+  {% if not absence_deduction_reliable %}
+    <div class="notice notice--warning">{{ absence_deduction_message }}</div>
+  {% endif %}
+  {% if majoration_rate_missing %}
+    <div class="notice notice--warning">Des heures majorees existent, mais leur coefficient contractuel (minimum 1,10) manque. Leur supplement n'est pas inclus.</div>
+  {% endif %}
   <div class="summary-list">
     <div class="summary-row">
       <span class="label">Heures contractuelles</span>
@@ -15,7 +20,15 @@
       <span class="value">{{ hours_real | round(2) }} h</span>
     </div>
     <div class="summary-row">
-      <span class="label">Heures majorees (ancien calcul quotidien)</span>
+      <span class="label">Heures normales</span>
+      <span class="value">{{ hours_normal | round(2) }} h</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Heures complementaires (semaine)</span>
+      <span class="value">{{ hours_complementary | round(2) }} h</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Heures majorees au-dela de 45 h (semaine)</span>
       <span class="value">{{ hours_majorated | round(2) }} h</span>
     </div>
     <div class="summary-row">
@@ -66,15 +79,15 @@
       <span class="value">{{ monthly_salary_theoretical | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Valeur indicative des heures saisies</span>
+      <span class="label">Valeur des heures saisies au tarif net de base</span>
       <span class="value">{{ salary_base | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Majoration (ancien calcul quotidien)</span>
+      <span class="label">Supplement de majoration hebdomadaire</span>
       <span class="value">{{ salary_majoration | round(2) }} €</span>
     </div>
     <div class="summary-row">
-      <span class="label">Deduction sans solde (approximation)</span>
+      <span class="label">Deduction absence non remuneree{% if absence_deduction_reliable %} (planning){% else %} (incomplete){% endif %}</span>
       <span class="value">-{{ unpaid_leave_deduction | round(2) }} €</span>
     </div>
     <div class="summary-row">

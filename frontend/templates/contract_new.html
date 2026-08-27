@@ -109,15 +109,10 @@
         <input name="hourly_rate" type="number" step="0.01" required />
       </label>
 
-      <label class="field">
-        <span>Ancien seuil quotidien (suivi non declaratif)</span>
-        <input name="majoration_threshold" type="number" step="0.01" />
-      </label>
-
       <div class="field-group">
         <label class="field">
-          <span>Ancien coefficient de majoration (ex. 1,25)</span>
-          <input name="majoration_rate" type="number" step="0.01" />
+          <span>Coefficient de majoration au-dela de 45 h/semaine (minimum 1,10)</span>
+          <input name="majoration_rate" type="number" min="1.10" step="0.01" />
         </label>
         <label class="field">
           <span>Plafond salaire net</span>

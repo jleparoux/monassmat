@@ -21,6 +21,12 @@
   Cette synthese agrege des indicateurs de suivi. Elle ne constitue pas un
   recapitulatif de paie et ne doit pas etre recopiee telle quelle dans Pajemploi.
 </div>
+{% if not totals.absence_deduction_reliable %}
+  <div class="notice notice--warning">Au moins une deduction d'absence est incomplete: planning manquant ou semaines d'accueil non programmees.</div>
+{% endif %}
+{% if totals.majoration_rate_missing %}
+  <div class="notice notice--warning">Au moins une semaine comporte des heures majorees sans coefficient contractuel exploitable.</div>
+{% endif %}
 
 <div class="summary-split">
   <div class="summary-section">
@@ -35,7 +41,11 @@
         <span class="value">{{ totals.hours_real | round(2) }} h</span>
       </div>
       <div class="summary-row">
-        <span class="label">Heures majorees (ancien calcul quotidien)</span>
+        <span class="label">Heures complementaires (semaine)</span>
+        <span class="value">{{ totals.hours_complementary | round(2) }} h</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Heures majorees au-dela de 45 h (semaine)</span>
         <span class="value">{{ totals.hours_majorated | round(2) }} h</span>
       </div>
       <div class="summary-row">
@@ -86,15 +96,15 @@
         <span class="value">{{ totals.yearly_salary_theoretical | round(2) }} €</span>
       </div>
       <div class="summary-row">
-        <span class="label">Valeur indicative des heures saisies</span>
+        <span class="label">Valeur des heures saisies au tarif net de base</span>
         <span class="value">{{ totals.salary_base | round(2) }} €</span>
       </div>
       <div class="summary-row">
-        <span class="label">Majoration (ancien calcul quotidien)</span>
+        <span class="label">Supplement de majoration hebdomadaire</span>
         <span class="value">{{ totals.salary_majoration | round(2) }} €</span>
       </div>
       <div class="summary-row">
-        <span class="label">Deduction sans solde (approximation)</span>
+        <span class="label">Deduction absence non remuneree{% if totals.absence_deduction_reliable %} (planning){% else %} (incomplete){% endif %}</span>
         <span class="value">-{{ totals.unpaid_leave_deduction | round(2) }} €</span>
       </div>
       <div class="summary-row">

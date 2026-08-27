@@ -21,6 +21,8 @@ from .calculations import (
     PaidLeaveMethod,
     Period,
     WorkdayFacts,
+    absence_deduction_52_weeks,
+    allocate_weekly_hours,
     contract_monthly_hours,
     contract_monthly_salary,
     hours_between_times,
@@ -28,10 +30,10 @@ from .calculations import (
     paid_leave_acquired_days_v1,
     paid_leave_value,
     parse_holidays_response,
-    unpaid_leave_deduction,
+    scheduled_hours_for_day,
+    validate_majoration_coefficient,
     validate_regular_contract_weeks,
     validate_weekly_schedule,
-    workday_totals,
 )
 from .calculations import (
     ContractYearMode as CalcContractYearMode,
@@ -120,6 +122,18 @@ def parse_optional_int(value: str | None) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def parse_majoration_coefficient(value: str | None) -> float | None:
+    coefficient = parse_optional_float(value)
+    try:
+        validate_majoration_coefficient(coefficient)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Le coefficient de majoration doit etre au minimum de 1,10.",
+        ) from exc
+    return coefficient
 
 
 def parse_regular_contract_mode(
@@ -275,6 +289,147 @@ def settings_for_day(settings: list[dict], day: date) -> dict:
     return settings[index]
 
 
+def contract_is_active_on(contract, day: date) -> bool:
+    return contract.start_date <= day and (
+        contract.end_date is None or day <= contract.end_date
+    )
+
+
+def schedule_from_settings(settings: dict) -> tuple[float | None, ...]:
+    return tuple(settings[field_name] for field_name in WEEKLY_SCHEDULE_FIELDS)
+
+
+def week_start(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def expanded_week_bounds(start: date, end: date) -> tuple[date, date]:
+    return week_start(start), end + timedelta(days=6 - end.weekday())
+
+
+def allocate_period_worked_hours(workdays, settings: list[dict]) -> dict:
+    workdays_by_week: dict[date, list[WorkdayFacts]] = {}
+    for workday in workdays:
+        if workday.kind != WorkdayKind.NORMAL:
+            continue
+        monday = week_start(workday.date)
+        workdays_by_week.setdefault(monday, []).append(
+            WorkdayFacts(
+                day=workday.date,
+                hours=workday.hours,
+                kind=CalcWorkdayKind.NORMAL,
+            )
+        )
+
+    result = {}
+    for monday, weekly_workdays in workdays_by_week.items():
+        current = settings_for_day(settings, monday)
+        result.update(
+            allocate_weekly_hours(
+                weekly_workdays,
+                contracted_hours=current["hours_per_week"],
+            )
+        )
+    return result
+
+
+def calculate_unpaid_absence_deduction(
+    contract,
+    workdays_by_date: dict,
+    settings: list[dict],
+    *,
+    start: date,
+    end: date,
+) -> tuple[float, bool, str]:
+    unpaid_days = [
+        day
+        for day, workday in workdays_by_date.items()
+        if start <= day <= end
+        and contract_is_active_on(contract, day)
+        and workday.kind == WorkdayKind.UNPAID_LEAVE
+    ]
+    if not unpaid_days:
+        return 0.0, True, "Aucune absence non remuneree saisie."
+
+    deduction = 0.0
+    missing_schedule = False
+    incomplete_schedule = False
+    months = sorted({(day.year, day.month) for day in unpaid_days})
+
+    for year, month in months:
+        month_start = date(year, month, 1)
+        month_end = date(year, month, calendar.monthrange(year, month)[1])
+        active_days = [
+            day
+            for day in iter_days(month_start, month_end)
+            if contract_is_active_on(contract, day)
+        ]
+        month_settings = [settings_for_day(settings, day) for day in active_days]
+        if any(item["year_mode"] != ContractYearMode.COMPLETE for item in month_settings):
+            incomplete_schedule = True
+            continue
+
+        scheduled_hours = []
+        month_missing_schedule = False
+        for day, current in zip(active_days, month_settings, strict=True):
+            hours = scheduled_hours_for_day(schedule_from_settings(current), day)
+            if hours is None:
+                missing_schedule = True
+                month_missing_schedule = True
+                break
+            scheduled_hours.append(hours)
+        if month_missing_schedule:
+            continue
+
+        monthly_salary = sum(
+            contract_monthly_salary(
+                ContractFacts(
+                    start_date=contract.start_date,
+                    end_date=contract.end_date,
+                    hours_per_week=current["hours_per_week"],
+                    weeks_per_year=current["weeks_per_year"],
+                    hourly_rate=current["hourly_rate"],
+                )
+            )
+            / calendar.monthrange(day.year, day.month)[1]
+            for day, current in zip(active_days, month_settings, strict=True)
+        )
+        absence_hours = sum(
+            scheduled_hours_for_day(
+                schedule_from_settings(settings_for_day(settings, day)),
+                day,
+            )
+            or 0.0
+            for day in unpaid_days
+            if day.year == year and day.month == month
+        )
+        if absence_hours > 0:
+            deduction += absence_deduction_52_weeks(
+                monthly_salary=monthly_salary,
+                absence_hours=absence_hours,
+                scheduled_hours_in_month=sum(scheduled_hours),
+            )
+
+    if incomplete_schedule:
+        return (
+            deduction,
+            False,
+            "Deduction incomplete: les semaines d'accueil programmees manquent "
+            "pour l'accueil sur 46 semaines ou moins.",
+        )
+    if missing_schedule:
+        return (
+            deduction,
+            False,
+            "Deduction non calculee: le planning contractuel est manquant.",
+        )
+    return (
+        deduction,
+        True,
+        "Deduction calculee sur les heures exactes du planning mensuel (52 semaines).",
+    )
+
+
 def summarize_period(
     contract,
     workdays,
@@ -287,14 +442,28 @@ def summarize_period(
     settings_index = 0
 
     workdays_by_date = {wd.date: wd for wd in workdays}
+    worked_hours_by_date = allocate_period_worked_hours(workdays, settings)
+    (
+        unpaid_deduction,
+        absence_deduction_reliable,
+        absence_deduction_message,
+    ) = calculate_unpaid_absence_deduction(
+        contract,
+        workdays_by_date,
+        settings,
+        start=start,
+        end=end,
+    )
 
     theo_hours = 0.0
     theo_salary = 0.0
     real_hours = 0.0
     normal_hours = 0.0
+    complementary_hours = 0.0
     majorated_hours = 0.0
     salary_base = 0.0
     salary_majoration = 0.0
+    majoration_rate_missing = False
 
     work_days = 0
     absence_days = 0
@@ -306,7 +475,6 @@ def summarize_period(
     fee_maintenance_days = 0
     fee_meal_total = 0.0
     fee_maintenance_total = 0.0
-    unpaid_deduction = 0.0
 
     for day in iter_days(start, end):
         while (
@@ -314,6 +482,8 @@ def summarize_period(
         ):
             settings_index += 1
         current = settings[settings_index]
+        if not contract_is_active_on(contract, day):
+            continue
 
         facts = ContractFacts(
             start_date=contract.start_date,
@@ -336,35 +506,28 @@ def summarize_period(
             absence_days += 1
         elif wd.kind == WorkdayKind.UNPAID_LEAVE:
             unpaid_leave_days += 1
-            unpaid_deduction += unpaid_leave_deduction(
-                1,
-                hours_per_week=current["hours_per_week"],
-                days_per_week=current["days_per_week"],
-                hourly_rate=current["hourly_rate"],
-            )
         elif wd.kind == WorkdayKind.ASSMAT_LEAVE:
             assmat_leave_days += 1
         elif wd.kind == WorkdayKind.HOLIDAY:
             holiday_days += 1
 
         if wd.kind == WorkdayKind.NORMAL and wd.hours > 0:
-            wd_totals = workday_totals(
-                [
-                    WorkdayFacts(
-                        day=wd.date,
-                        hours=wd.hours,
-                        kind=CalcWorkdayKind(wd.kind.value),
+            breakdown = worked_hours_by_date[day]
+            real_hours += wd.hours
+            normal_hours += breakdown.normal_hours
+            complementary_hours += breakdown.complementary_hours
+            majorated_hours += breakdown.majorated_hours
+            salary_base += wd.hours * current["hourly_rate"]
+            if breakdown.majorated_hours > 0:
+                coefficient = current["majoration_rate"]
+                if coefficient is None or coefficient < 1.10:
+                    majoration_rate_missing = True
+                else:
+                    salary_majoration += (
+                        breakdown.majorated_hours
+                        * current["hourly_rate"]
+                        * (coefficient - 1.0)
                     )
-                ],
-                hourly_rate=current["hourly_rate"],
-                majoration_threshold=current["majoration_threshold"],
-                majoration_rate=current["majoration_rate"],
-            )
-            real_hours += wd_totals.total_hours
-            normal_hours += wd_totals.normal_hours
-            majorated_hours += wd_totals.majorated_hours
-            salary_base += wd_totals.base_salary
-            salary_majoration += wd_totals.majoration_salary
 
         if wd.fee_meal:
             fee_meal_days += 1
@@ -384,6 +547,7 @@ def summarize_period(
         monthly_salary_theoretical=theo_salary,
         hours_real=real_hours,
         hours_normal=normal_hours,
+        hours_complementary=complementary_hours,
         hours_majorated=majorated_hours,
         hours_delta=hours_delta,
         work_days=work_days,
@@ -399,6 +563,9 @@ def summarize_period(
         fee_meal_total=fee_meal_total,
         fee_maintenance_total=fee_maintenance_total,
         unpaid_leave_deduction=unpaid_deduction,
+        absence_deduction_reliable=absence_deduction_reliable,
+        absence_deduction_message=absence_deduction_message,
+        majoration_rate_missing=majoration_rate_missing,
         total_estimated=total_estimated,
         average_hours_per_day=average_hours,
         paid_leave_days_annual=0,
@@ -414,7 +581,13 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
         if not contract:
             raise HTTPException(status_code=404, detail="Contract not found")
 
-        workdays = crud.list_workdays(db, contract_id, start, end)
+        workdays_start, workdays_end = expanded_week_bounds(start, end)
+        workdays = crud.list_workdays(
+            db,
+            contract_id,
+            workdays_start,
+            workdays_end,
+        )
         snapshots = crud.list_settings_snapshots(db, contract_id)
         summary = summarize_period(contract, workdays, snapshots, start=start, end=end)
         paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
@@ -528,7 +701,13 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             raise HTTPException(status_code=404, detail="Contract not found")
 
         start, end = year_bounds(year)
-        workdays = crud.list_workdays(db, contract_id, start, end)
+        workdays_start, workdays_end = expanded_week_bounds(start, end)
+        workdays = crud.list_workdays(
+            db,
+            contract_id,
+            workdays_start,
+            workdays_end,
+        )
         snapshots = crud.list_settings_snapshots(db, contract_id)
         settings = build_settings_timeline(contract, snapshots)
         paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
@@ -547,6 +726,7 @@ def build_year_summary(contract_id: int, year: int) -> dict:
         totals = {
             "hours_real": 0.0,
             "hours_normal": 0.0,
+            "hours_complementary": 0.0,
             "hours_majorated": 0.0,
             "work_days": 0,
             "absence_days": 0,
@@ -561,6 +741,8 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             "fee_meal_total": 0.0,
             "fee_maintenance_total": 0.0,
             "unpaid_leave_deduction": 0.0,
+            "absence_deduction_reliable": True,
+            "majoration_rate_missing": False,
             "total_estimated": 0.0,
             "yearly_hours_theoretical": 0.0,
             "yearly_salary_theoretical": 0.0,
@@ -573,10 +755,9 @@ def build_year_summary(contract_id: int, year: int) -> dict:
         for month in range(1, 13):
             month_start = date(year, month, 1)
             month_end = date(year, month, calendar.monthrange(year, month)[1])
-            month_workdays = [wd for wd in workdays if wd.date.month == month]
             summary = summarize_period(
                 contract,
-                month_workdays,
+                workdays,
                 snapshots,
                 start=month_start,
                 end=month_end,
@@ -587,6 +768,7 @@ def build_year_summary(contract_id: int, year: int) -> dict:
 
             totals["hours_real"] += summary.hours_real
             totals["hours_normal"] += summary.hours_normal
+            totals["hours_complementary"] += summary.hours_complementary
             totals["hours_majorated"] += summary.hours_majorated
             totals["work_days"] += summary.work_days
             totals["absence_days"] += summary.absence_days
@@ -601,6 +783,14 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             totals["fee_meal_total"] += summary.fee_meal_total
             totals["fee_maintenance_total"] += summary.fee_maintenance_total
             totals["unpaid_leave_deduction"] += summary.unpaid_leave_deduction
+            totals["absence_deduction_reliable"] = (
+                totals["absence_deduction_reliable"]
+                and summary.absence_deduction_reliable
+            )
+            totals["majoration_rate_missing"] = (
+                totals["majoration_rate_missing"]
+                or summary.majoration_rate_missing
+            )
             totals["total_estimated"] += summary.total_estimated
             totals["yearly_hours_theoretical"] += summary.monthly_hours_theoretical
             totals["yearly_salary_theoretical"] += summary.monthly_salary_theoretical
@@ -640,6 +830,7 @@ def export_monthly_csv(contract_id: int, start: date, end: date):
             "Période",
             "Heures contractuelles",
             "Heures réelles",
+            "Heures complémentaires",
             "Heures majorées",
             "Jours travaillés",
             "Jours absences",
@@ -659,6 +850,7 @@ def export_monthly_csv(contract_id: int, start: date, end: date):
             f"{summary.period_start} → {summary.period_end}",
             round(summary.monthly_hours_theoretical, 2),
             round(summary.hours_real, 2),
+            round(summary.hours_complementary, 2),
             round(summary.hours_majorated, 2),
             summary.work_days,
             summary.absence_days,
@@ -694,6 +886,8 @@ def export_yearly_csv(contract_id: int, year: int):
         [
             "Mois",
             "Heures réelles",
+            "Heures complémentaires",
+            "Heures majorées",
             "Jours travaillés",
             "Jours absences",
             "Salaire de base",
@@ -710,6 +904,8 @@ def export_yearly_csv(contract_id: int, year: int):
             [
                 item["label"],
                 round(s.hours_real, 2),
+                round(s.hours_complementary, 2),
+                round(s.hours_majorated, 2),
                 s.work_days,
                 s.absence_days,
                 round(s.salary_base, 2),
@@ -724,6 +920,8 @@ def export_yearly_csv(contract_id: int, year: int):
         [
             "TOTAL",
             round(totals["hours_real"], 2),
+            round(totals["hours_complementary"], 2),
+            round(totals["hours_majorated"], 2),
             totals["work_days"],
             totals["absence_days"],
             round(totals["salary_base"], 2),
@@ -880,7 +1078,7 @@ def save_contract_settings(
     for field_name, value in parsed_schedule.items():
         setattr(contract, field_name, value)
     contract.majoration_threshold = parse_optional_float(majoration_threshold)
-    contract.majoration_rate = parse_optional_float(majoration_rate)
+    contract.majoration_rate = parse_majoration_coefficient(majoration_rate)
     contract.fee_meal_amount = parse_optional_float(fee_meal_amount)
     contract.fee_maintenance_amount = parse_optional_float(fee_maintenance_amount)
     contract.salary_net_ceiling = parse_optional_float(salary_net_ceiling)
@@ -1089,7 +1287,7 @@ def save_settings_snapshot(
         days_per_week=parse_optional_int(days_per_week),
         **parsed_schedule,
         majoration_threshold=parse_optional_float(majoration_threshold),
-        majoration_rate=parse_optional_float(majoration_rate),
+        majoration_rate=parse_majoration_coefficient(majoration_rate),
         fee_meal_amount=parse_optional_float(fee_meal_amount),
         fee_maintenance_amount=parse_optional_float(fee_maintenance_amount),
         salary_net_ceiling=parse_optional_float(salary_net_ceiling),
@@ -1780,7 +1978,7 @@ def create_contract(
         days_per_week=parse_optional_int(days_per_week),
         **parsed_schedule,
         majoration_threshold=parse_optional_float(majoration_threshold),
-        majoration_rate=parse_optional_float(majoration_rate),
+        majoration_rate=parse_majoration_coefficient(majoration_rate),
         fee_meal_amount=parse_optional_float(fee_meal_amount),
         fee_maintenance_amount=parse_optional_float(fee_maintenance_amount),
         salary_net_ceiling=parse_optional_float(salary_net_ceiling),
