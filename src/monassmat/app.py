@@ -349,7 +349,6 @@ def calculate_unpaid_absence_deduction(
     contract,
     workdays_by_date: dict,
     settings: list[dict],
-    week_schedules,
     *,
     start: date,
     end: date,
@@ -366,15 +365,9 @@ def calculate_unpaid_absence_deduction(
 
     deduction = 0.0
     missing_schedule = False
-    missing_week_programming = False
     mixed_modes = False
-    inconsistent_absence = False
     used_52_week_formula = False
     used_46_week_formula = False
-    planned_by_week = {
-        item.week_start: item.planned
-        for item in week_schedules
-    }
     months = sorted({(day.year, day.month) for day in unpaid_days})
 
     for year, month in months:
@@ -442,34 +435,16 @@ def calculate_unpaid_absence_deduction(
             for day, hours in scheduled_hours_by_day.items()
             if hours > 0
         ]
-        required_weeks = {week_start(day) for day in scheduled_days}
-        if not required_weeks.issubset(planned_by_week):
-            missing_week_programming = True
-            continue
-        if any(
-            scheduled_hours_by_day[day] > 0
-            and not planned_by_week[week_start(day)]
-            for day in month_unpaid_days
-        ):
-            inconsistent_absence = True
-            continue
-
-        planned_days = [
-            day
-            for day in scheduled_days
-            if planned_by_week[week_start(day)]
-        ]
         absence_days = sum(
             1
             for day in month_unpaid_days
             if scheduled_hours_by_day[day] > 0
-            and planned_by_week[week_start(day)]
         )
         if absence_days > 0:
             deduction += absence_deduction_46_weeks(
                 monthly_salary=monthly_salary,
                 absence_days=absence_days,
-                scheduled_days_in_month=len(planned_days),
+                scheduled_days_in_month=len(scheduled_days),
             )
         used_46_week_formula = True
 
@@ -485,22 +460,8 @@ def calculate_unpaid_absence_deduction(
             False,
             "Deduction non calculee: le planning contractuel est manquant.",
         )
-    if missing_week_programming:
-        return (
-            deduction,
-            False,
-            "Deduction incomplete: confirmez toutes les semaines programmees "
-            "de ce mois.",
-        )
-    if inconsistent_absence:
-        return (
-            deduction,
-            False,
-            "Deduction non calculee: une absence est saisie pendant une semaine "
-            "declaree non programmee.",
-        )
     if used_46_week_formula and not used_52_week_formula:
-        message = "Deduction calculee sur les jours programmes du mois (46 semaines ou moins)."
+        message = "Deduction calculee sur les jours habituels du mois (46 semaines ou moins)."
     elif used_52_week_formula and not used_46_week_formula:
         message = "Deduction calculee sur les heures exactes du planning mensuel (52 semaines)."
     else:
@@ -516,7 +477,6 @@ def summarize_period(
     contract,
     workdays,
     settings_snapshots,
-    week_schedules=(),
     *,
     start: date,
     end: date,
@@ -534,7 +494,6 @@ def summarize_period(
         contract,
         workdays_by_date,
         settings,
-        week_schedules,
         start=start,
         end=end,
     )
@@ -673,23 +632,10 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
             workdays_end,
         )
         snapshots = crud.list_settings_snapshots(db, contract_id)
-        first_month_start = date(start.year, start.month, 1)
-        last_month_end = date(
-            end.year,
-            end.month,
-            calendar.monthrange(end.year, end.month)[1],
-        )
-        week_schedules = crud.list_week_schedules(
-            db,
-            contract_id,
-            week_start(first_month_start),
-            week_start(last_month_end),
-        )
         summary = summarize_period(
             contract,
             workdays,
             snapshots,
-            week_schedules,
             start=start,
             end=end,
         )
@@ -812,12 +758,6 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             workdays_end,
         )
         snapshots = crud.list_settings_snapshots(db, contract_id)
-        week_schedules = crud.list_week_schedules(
-            db,
-            contract_id,
-            week_start(start),
-            week_start(end),
-        )
         settings = build_settings_timeline(contract, snapshots)
         paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
         paid_leave_settings = settings_for_day(settings, paid_leave_start)
@@ -868,7 +808,6 @@ def build_year_summary(contract_id: int, year: int) -> dict:
                 contract,
                 workdays,
                 snapshots,
-                week_schedules,
                 start=month_start,
                 end=month_end,
             )

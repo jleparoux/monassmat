@@ -29,10 +29,11 @@ Regles implementees et testees dans `calculations.py`:
   d'absence / heures exactes du planning dans le mois.
 
 La classification hebdomadaire et les deux formules de deduction sont branchees
-au recapitulatif. En accueil sur 46 semaines ou moins, la deduction en jours
-n'est calculee que si toutes les semaines du mois ont ete explicitement
-confirmees dans l'ecran de programmation. L'interface signale toute donnee
-manquante au lieu de produire une approximation. Le compteur de
+au recapitulatif. Conformement a l'article 111, les semaines de non-accueil et
+les jours feries chomes correspondant a un jour habituel restent comptes dans
+le denominateur mensuel; la programmation annuelle ne modifie donc pas ce
+calcul. L'interface signale tout planning contractuel manquant au lieu de
+produire une approximation. Le compteur de
 conges payes visible dans l'interface est une estimation historique non
 fiabilisee, notamment pour les periodes de reference partiellement travaillees.
 

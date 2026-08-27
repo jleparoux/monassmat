@@ -23,8 +23,8 @@
 </div>
 {% if not totals.absence_deduction_reliable %}
   <div class="notice notice--warning">
-    Au moins une deduction d'absence est incomplete: planning manquant ou semaines d'accueil non programmees.
-    <a href="/contracts/{{ contract_id }}/planned-weeks?year={{ year }}">Verifier la programmation →</a>
+    Au moins une deduction d'absence est incomplete: le planning contractuel est manquant ou incoherent.
+    <a href="/contracts/{{ contract_id }}/settings">Verifier le planning contractuel →</a>
   </div>
 {% endif %}
 {% if totals.majoration_rate_missing %}

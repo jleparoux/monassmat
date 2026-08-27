@@ -67,12 +67,6 @@ class DummySnapshot:
     sunday_hours: float | None = None
 
 
-@dataclass
-class DummyWeekSchedule:
-    week_start: date
-    planned: bool
-
-
 def test_weeks_overlapping_year_include_boundary_weeks():
     weeks = weeks_overlapping_year(2025)
 
@@ -263,7 +257,7 @@ def test_52_week_absence_deduction_uses_exact_month_schedule():
     assert summary.absence_deduction_reliable is True
 
 
-def test_46_week_absence_stays_incomplete_without_programmed_weeks():
+def test_46_week_absence_counts_non_care_weeks_in_month_denominator():
     contract = DummyContract(
         start_date=date(2025, 1, 1),
         end_date=None,
@@ -297,65 +291,14 @@ def test_46_week_absence_stays_incomplete_without_programmed_weeks():
         contract,
         workdays,
         [],
-        start=date(2025, 1, 1),
-        end=date(2025, 1, 31),
-    )
-
-    assert summary.unpaid_leave_deduction == 0.0
-    assert summary.absence_deduction_reliable is False
-    assert "semaines programmees" in summary.absence_deduction_message
-
-
-def test_46_week_absence_uses_confirmed_programmed_days():
-    contract = DummyContract(
-        start_date=date(2025, 1, 1),
-        end_date=None,
-        hours_per_week=40.0,
-        weeks_per_year=44.0,
-        hourly_rate=5.0,
-        days_per_week=None,
-        majoration_threshold=None,
-        majoration_rate=None,
-        fee_meal_amount=None,
-        fee_maintenance_amount=None,
-        salary_net_ceiling=None,
-        year_mode=ContractYearMode.INCOMPLETE,
-        monday_hours=8.0,
-        tuesday_hours=8.0,
-        wednesday_hours=8.0,
-        thursday_hours=8.0,
-        friday_hours=8.0,
-        saturday_hours=0.0,
-        sunday_hours=0.0,
-    )
-    workdays = [
-        DummyWorkday(
-            date=date(2025, 1, 6),
-            hours=0.0,
-            kind=WorkdayKind.UNPAID_LEAVE,
-        )
-    ]
-    week_schedules = [
-        DummyWeekSchedule(date(2024, 12, 30), True),
-        DummyWeekSchedule(date(2025, 1, 6), True),
-        DummyWeekSchedule(date(2025, 1, 13), False),
-        DummyWeekSchedule(date(2025, 1, 20), True),
-        DummyWeekSchedule(date(2025, 1, 27), True),
-    ]
-
-    summary = summarize_period(
-        contract,
-        workdays,
-        [],
-        week_schedules,
         start=date(2025, 1, 1),
         end=date(2025, 1, 31),
     )
 
     monthly_salary = 40.0 * 44.0 / 12.0 * 5.0
-    assert summary.unpaid_leave_deduction == pytest.approx(monthly_salary / 18.0)
+    assert summary.unpaid_leave_deduction == pytest.approx(monthly_salary / 23.0)
     assert summary.absence_deduction_reliable is True
-    assert "jours programmes" in summary.absence_deduction_message
+    assert "jours habituels" in summary.absence_deduction_message
 
 
 def test_weekly_hours_are_classified_across_workdays():

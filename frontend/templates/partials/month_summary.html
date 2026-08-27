@@ -7,7 +7,7 @@
   {% if not absence_deduction_reliable %}
     <div class="notice notice--warning">
       {{ absence_deduction_message }}
-      <a href="/contracts/{{ contract_id }}/planned-weeks?year={{ period_start.year }}">Verifier les semaines programmees →</a>
+      <a href="/contracts/{{ contract_id }}/settings">Verifier le planning contractuel →</a>
     </div>
   {% endif %}
   {% if majoration_rate_missing %}
