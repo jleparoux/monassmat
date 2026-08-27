@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark" />
   <title>{{ title or "MonAssmat" }}</title>
 
-  <link rel="stylesheet" href="/static/app.css?v=20260827-2" />
+  <link rel="stylesheet" href="/static/app.css?v=20260827-3" />
   <script>
     // Inline pour éviter le flash au chargement
     (function(){var t=localStorage.getItem('monassmat-theme')||'auto';var dark=t==='dark'||(t==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
@@ -19,7 +19,7 @@
     <div class="container topbar__inner">
       <a class="brand" href="/contracts">MonAssmat</a>
       {% if contract_id %}
-        {% set _labels = {"calendar": "Calendrier", "year": "Synthèse annuelle", "paid-leave": "Congés payés", "payments": "Paiements", "settings": "Paramètres"} %}
+        {% set _labels = {"calendar": "Calendrier", "year": "Synthèse annuelle", "paid-leave": "Congés payés", "payments": "Paiements", "settings": "Paramètres", "planning": "Semaines programmées"} %}
         <div class="topbar__breadcrumb">
           <a href="/contracts" class="breadcrumb__back">← {{ contract_name or ("Contrat #" ~ contract_id) }}</a>
           {% if current_section %}

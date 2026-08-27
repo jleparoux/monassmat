@@ -21,6 +21,7 @@ from .calculations import (
     PaidLeaveMethod,
     Period,
     WorkdayFacts,
+    absence_deduction_46_weeks,
     absence_deduction_52_weeks,
     allocate_weekly_hours,
     contract_monthly_hours,
@@ -303,6 +304,17 @@ def week_start(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
 
+def weeks_overlapping_year(year: int) -> list[date]:
+    first = week_start(date(year, 1, 1))
+    last = week_start(date(year, 12, 31))
+    weeks = []
+    current = first
+    while current <= last:
+        weeks.append(current)
+        current += timedelta(days=7)
+    return weeks
+
+
 def expanded_week_bounds(start: date, end: date) -> tuple[date, date]:
     return week_start(start), end + timedelta(days=6 - end.weekday())
 
@@ -337,6 +349,7 @@ def calculate_unpaid_absence_deduction(
     contract,
     workdays_by_date: dict,
     settings: list[dict],
+    week_schedules,
     *,
     start: date,
     end: date,
@@ -353,7 +366,15 @@ def calculate_unpaid_absence_deduction(
 
     deduction = 0.0
     missing_schedule = False
-    incomplete_schedule = False
+    missing_week_programming = False
+    mixed_modes = False
+    inconsistent_absence = False
+    used_52_week_formula = False
+    used_46_week_formula = False
+    planned_by_week = {
+        item.week_start: item.planned
+        for item in week_schedules
+    }
     months = sorted({(day.year, day.month) for day in unpaid_days})
 
     for year, month in months:
@@ -365,11 +386,12 @@ def calculate_unpaid_absence_deduction(
             if contract_is_active_on(contract, day)
         ]
         month_settings = [settings_for_day(settings, day) for day in active_days]
-        if any(item["year_mode"] != ContractYearMode.COMPLETE for item in month_settings):
-            incomplete_schedule = True
+        modes = {item["year_mode"] for item in month_settings}
+        if len(modes) != 1:
+            mixed_modes = True
             continue
 
-        scheduled_hours = []
+        scheduled_hours_by_day = {}
         month_missing_schedule = False
         for day, current in zip(active_days, month_settings, strict=True):
             hours = scheduled_hours_for_day(schedule_from_settings(current), day)
@@ -377,7 +399,7 @@ def calculate_unpaid_absence_deduction(
                 missing_schedule = True
                 month_missing_schedule = True
                 break
-            scheduled_hours.append(hours)
+            scheduled_hours_by_day[day] = hours
         if month_missing_schedule:
             continue
 
@@ -394,28 +416,68 @@ def calculate_unpaid_absence_deduction(
             / calendar.monthrange(day.year, day.month)[1]
             for day, current in zip(active_days, month_settings, strict=True)
         )
-        absence_hours = sum(
-            scheduled_hours_for_day(
-                schedule_from_settings(settings_for_day(settings, day)),
-                day,
-            )
-            or 0.0
+        month_unpaid_days = [
+            day
             for day in unpaid_days
             if day.year == year and day.month == month
-        )
-        if absence_hours > 0:
-            deduction += absence_deduction_52_weeks(
-                monthly_salary=monthly_salary,
-                absence_hours=absence_hours,
-                scheduled_hours_in_month=sum(scheduled_hours),
-            )
+        ]
 
-    if incomplete_schedule:
+        mode = next(iter(modes))
+        if mode == ContractYearMode.COMPLETE:
+            absence_hours = sum(
+                scheduled_hours_by_day[day]
+                for day in month_unpaid_days
+            )
+            if absence_hours > 0:
+                deduction += absence_deduction_52_weeks(
+                    monthly_salary=monthly_salary,
+                    absence_hours=absence_hours,
+                    scheduled_hours_in_month=sum(scheduled_hours_by_day.values()),
+                )
+            used_52_week_formula = True
+            continue
+
+        scheduled_days = [
+            day
+            for day, hours in scheduled_hours_by_day.items()
+            if hours > 0
+        ]
+        required_weeks = {week_start(day) for day in scheduled_days}
+        if not required_weeks.issubset(planned_by_week):
+            missing_week_programming = True
+            continue
+        if any(
+            scheduled_hours_by_day[day] > 0
+            and not planned_by_week[week_start(day)]
+            for day in month_unpaid_days
+        ):
+            inconsistent_absence = True
+            continue
+
+        planned_days = [
+            day
+            for day in scheduled_days
+            if planned_by_week[week_start(day)]
+        ]
+        absence_days = sum(
+            1
+            for day in month_unpaid_days
+            if scheduled_hours_by_day[day] > 0
+            and planned_by_week[week_start(day)]
+        )
+        if absence_days > 0:
+            deduction += absence_deduction_46_weeks(
+                monthly_salary=monthly_salary,
+                absence_days=absence_days,
+                scheduled_days_in_month=len(planned_days),
+            )
+        used_46_week_formula = True
+
+    if mixed_modes:
         return (
             deduction,
             False,
-            "Deduction incomplete: les semaines d'accueil programmees manquent "
-            "pour l'accueil sur 46 semaines ou moins.",
+            "Deduction non calculee: le mode d'accueil change au cours du mois.",
         )
     if missing_schedule:
         return (
@@ -423,10 +485,30 @@ def calculate_unpaid_absence_deduction(
             False,
             "Deduction non calculee: le planning contractuel est manquant.",
         )
+    if missing_week_programming:
+        return (
+            deduction,
+            False,
+            "Deduction incomplete: confirmez toutes les semaines programmees "
+            "de ce mois.",
+        )
+    if inconsistent_absence:
+        return (
+            deduction,
+            False,
+            "Deduction non calculee: une absence est saisie pendant une semaine "
+            "declaree non programmee.",
+        )
+    if used_46_week_formula and not used_52_week_formula:
+        message = "Deduction calculee sur les jours programmes du mois (46 semaines ou moins)."
+    elif used_52_week_formula and not used_46_week_formula:
+        message = "Deduction calculee sur les heures exactes du planning mensuel (52 semaines)."
+    else:
+        message = "Deduction calculee sur la programmation contractuelle du mois."
     return (
         deduction,
         True,
-        "Deduction calculee sur les heures exactes du planning mensuel (52 semaines).",
+        message,
     )
 
 
@@ -434,6 +516,7 @@ def summarize_period(
     contract,
     workdays,
     settings_snapshots,
+    week_schedules=(),
     *,
     start: date,
     end: date,
@@ -451,6 +534,7 @@ def summarize_period(
         contract,
         workdays_by_date,
         settings,
+        week_schedules,
         start=start,
         end=end,
     )
@@ -589,7 +673,26 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
             workdays_end,
         )
         snapshots = crud.list_settings_snapshots(db, contract_id)
-        summary = summarize_period(contract, workdays, snapshots, start=start, end=end)
+        first_month_start = date(start.year, start.month, 1)
+        last_month_end = date(
+            end.year,
+            end.month,
+            calendar.monthrange(end.year, end.month)[1],
+        )
+        week_schedules = crud.list_week_schedules(
+            db,
+            contract_id,
+            week_start(first_month_start),
+            week_start(last_month_end),
+        )
+        summary = summarize_period(
+            contract,
+            workdays,
+            snapshots,
+            week_schedules,
+            start=start,
+            end=end,
+        )
         paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
         paid_leave_workdays = crud.list_workdays(db, contract_id, paid_leave_start, paid_leave_end)
         settings = build_settings_timeline(contract, snapshots)
@@ -709,6 +812,12 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             workdays_end,
         )
         snapshots = crud.list_settings_snapshots(db, contract_id)
+        week_schedules = crud.list_week_schedules(
+            db,
+            contract_id,
+            week_start(start),
+            week_start(end),
+        )
         settings = build_settings_timeline(contract, snapshots)
         paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
         paid_leave_settings = settings_for_day(settings, paid_leave_start)
@@ -759,6 +868,7 @@ def build_year_summary(contract_id: int, year: int) -> dict:
                 contract,
                 workdays,
                 snapshots,
+                week_schedules,
                 start=month_start,
                 end=month_end,
             )
@@ -996,6 +1106,88 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
             "year_modes": [m.value for m in ContractYearMode],
             "paid_leave_days_annual": current_paid_leave_days,
         },
+    )
+
+
+@app.get("/contracts/{contract_id}/planned-weeks", response_class=HTMLResponse)
+def planned_weeks_page(
+    contract_id: int,
+    request: Request,
+    year: int | None = None,
+    saved: bool = False,
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    target_year = year or date.today().year
+    if target_year < 1900 or target_year > 2100:
+        raise HTTPException(status_code=400, detail="Invalid year")
+
+    weeks = weeks_overlapping_year(target_year)
+    stored = crud.list_week_schedules(db, contract_id, weeks[0], weeks[-1])
+    stored_by_week = {item.week_start: item.planned for item in stored}
+    week_rows = [
+        {
+            "week_start": monday,
+            "week_end": monday + timedelta(days=6),
+            "week_number": monday.isocalendar().week,
+            "planned": stored_by_week.get(monday, True),
+            "stored": monday in stored_by_week,
+        }
+        for monday in weeks
+    ]
+    return templates.TemplateResponse(
+        request,
+        "planned_weeks.html",
+        {
+            "title": "Semaines programmees",
+            "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
+            "contract": contract,
+            "year": target_year,
+            "prev_year": target_year - 1,
+            "next_year": target_year + 1,
+            "week_rows": week_rows,
+            "configured": len(stored_by_week) == len(weeks),
+            "planned_count": sum(1 for row in week_rows if row["planned"]),
+            "saved": saved,
+            "current_section": "planning",
+        },
+    )
+
+
+@app.post("/contracts/{contract_id}/planned-weeks", response_class=HTMLResponse)
+def save_planned_weeks(
+    contract_id: int,
+    year: int = Form(...),
+    planned_weeks: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    if year < 1900 or year > 2100:
+        raise HTTPException(status_code=400, detail="Invalid year")
+
+    weeks = weeks_overlapping_year(year)
+    allowed = set(weeks)
+    try:
+        selected = {date_from_iso(value) for value in planned_weeks}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid week") from exc
+    if not selected.issubset(allowed):
+        raise HTTPException(status_code=400, detail="Week outside selected year")
+
+    crud.set_week_schedules(
+        db,
+        contract_id=contract_id,
+        statuses={monday: monday in selected for monday in weeks},
+    )
+    db.commit()
+    return RedirectResponse(
+        url=f"/contracts/{contract_id}/planned-weeks?year={year}&saved=1",
+        status_code=303,
     )
 
 

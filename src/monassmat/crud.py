@@ -9,6 +9,7 @@ from .models import (
     Child,
     Contract,
     ContractSettingsSnapshot,
+    ContractWeekSchedule,
     ContractYearMode,
     PaidLeave,
     PaidLeaveMethod,
@@ -132,6 +133,56 @@ def delete_settings_snapshot(
         return False
     db.delete(snapshot)
     return True
+
+
+def list_week_schedules(
+    db: Session,
+    contract_id: int,
+    start: date,
+    end: date,
+) -> list[ContractWeekSchedule]:
+    stmt = (
+        select(ContractWeekSchedule)
+        .where(ContractWeekSchedule.contract_id == contract_id)
+        .where(ContractWeekSchedule.week_start >= start)
+        .where(ContractWeekSchedule.week_start <= end)
+        .order_by(ContractWeekSchedule.week_start.asc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def set_week_schedules(
+    db: Session,
+    *,
+    contract_id: int,
+    statuses: dict[date, bool],
+) -> list[ContractWeekSchedule]:
+    if not statuses:
+        return []
+    existing = {
+        item.week_start: item
+        for item in list_week_schedules(
+            db,
+            contract_id,
+            min(statuses),
+            max(statuses),
+        )
+    }
+    result = []
+    for week_start, planned in sorted(statuses.items()):
+        item = existing.get(week_start)
+        if item:
+            item.planned = planned
+        else:
+            item = ContractWeekSchedule(
+                contract_id=contract_id,
+                week_start=week_start,
+                planned=planned,
+            )
+            db.add(item)
+        result.append(item)
+    return result
+
 
 def list_workdays(db: Session, contract_id: int, start: date, end: date) -> list[Workday]:
     stmt = (

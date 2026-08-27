@@ -13,6 +13,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Types de journee: travail, absence, conge sans solde, jour ferie
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
 - Planning contractuel: les heures prevues sont renseignees pour chacun des sept jours et leur total doit correspondre aux heures hebdomadaires. Les anciens contrats restent volontairement sans planning jusqu'a leur prochaine saisie: aucune valeur n'est inventee pendant la migration.
+- Semaines programmees: `/contracts/{id}/planned-weeks?year=YYYY`. Chaque semaine chevauchant l'annee est enregistree explicitement comme prevue ou non prevue; les annees historiques restent non configurees jusqu'a leur validation par l'utilisateur.
 
 ## Statut des calculs de remuneration
 
@@ -27,10 +28,10 @@ Regles implementees et testees dans `calculations.py`:
 - deduction d'absence en accueil sur 52 semaines: salaire mensualise x heures
   d'absence / heures exactes du planning dans le mois.
 
-La classification hebdomadaire et la deduction sur 52 semaines sont branchees
-au recapitulatif. En accueil sur 46 semaines ou moins, l'application ne calcule
-pas encore la deduction: le planning hebdomadaire ne permet pas de connaitre les
-semaines d'accueil reellement programmees. L'interface signale cette donnee
+La classification hebdomadaire et les deux formules de deduction sont branchees
+au recapitulatif. En accueil sur 46 semaines ou moins, la deduction en jours
+n'est calculee que si toutes les semaines du mois ont ete explicitement
+confirmees dans l'ecran de programmation. L'interface signale toute donnee
 manquante au lieu de produire une approximation. Le compteur de
 conges payes visible dans l'interface est une estimation historique non
 fiabilisee, notamment pour les periodes de reference partiellement travaillees.

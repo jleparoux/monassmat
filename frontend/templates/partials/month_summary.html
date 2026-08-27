@@ -5,7 +5,10 @@
     semaine, mais le salaire net total Pajemploi n'est pas encore calcule.
   </div>
   {% if not absence_deduction_reliable %}
-    <div class="notice notice--warning">{{ absence_deduction_message }}</div>
+    <div class="notice notice--warning">
+      {{ absence_deduction_message }}
+      <a href="/contracts/{{ contract_id }}/planned-weeks?year={{ period_start.year }}">Verifier les semaines programmees →</a>
+    </div>
   {% endif %}
   {% if majoration_rate_missing %}
     <div class="notice notice--warning">Des heures majorees existent, mais leur coefficient contractuel (minimum 1,10) manque. Leur supplement n'est pas inclus.</div>

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Semaines programmees {{ year }}</h1>
+    <p class="page-subtitle">Indiquez explicitement les semaines ou l'accueil est prevu au contrat.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/planned-weeks?year={{ prev_year }}">← {{ prev_year }}</a>
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/planned-weeks?year={{ next_year }}">{{ next_year }} →</a>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card__body">
+    {% if saved %}
+      <div class="notice notice--ok">Programmation enregistree pour {{ year }}.</div>
+    {% endif %}
+    {% if contract.year_mode.value == "complete" %}
+      <div class="notice notice--warning">Ce contrat est actuellement en accueil sur 52 semaines. Cette programmation n'est necessaire que pour un accueil sur 46 semaines ou moins.</div>
+    {% elif not configured %}
+      <div class="notice notice--warning">Cette annee n'est pas encore confirmee. Verifiez les semaines, puis enregistrez-les toutes.</div>
+    {% endif %}
+
+    <div class="highlight-block planned-weeks-summary">
+      <span class="label">Semaines prevues dans cette vue</span>
+      <span class="value"><span data-planned-count>{{ planned_count }}</span> / {{ week_rows | length }}</span>
+    </div>
+
+    <form method="post" action="/contracts/{{ contract_id }}/planned-weeks" data-planned-weeks-form>
+      <input type="hidden" name="year" value="{{ year }}" />
+      <div class="actions actions--start">
+        <button class="btn btn-secondary" type="button" data-plan-all>Tout prevoir</button>
+        <button class="btn btn-secondary" type="button" data-plan-none>Tout decocher</button>
+      </div>
+      <div class="planned-weeks-grid">
+        {% for row in week_rows %}
+          <label class="planned-week">
+            <input name="planned_weeks" type="checkbox" value="{{ row.week_start }}" {% if row.planned %}checked{% endif %} />
+            <span>S{{ "%02d" | format(row.week_number) }}</span>
+            <small>{{ row.week_start.strftime("%d/%m") }} – {{ row.week_end.strftime("%d/%m") }}</small>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Enregistrer la programmation {{ year }}</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.querySelector('[data-planned-weeks-form]');
+    var boxes = Array.from(form.querySelectorAll('input[name="planned_weeks"]'));
+    var count = document.querySelector('[data-planned-count]');
+    function update() { count.textContent = boxes.filter(function (box) { return box.checked; }).length; }
+    function setAll(checked) { boxes.forEach(function (box) { box.checked = checked; }); update(); }
+    form.querySelector('[data-plan-all]').addEventListener('click', function () { setAll(true); });
+    form.querySelector('[data-plan-none]').addEventListener('click', function () { setAll(false); });
+    boxes.forEach(function (box) { box.addEventListener('change', update); });
+  })();
+</script>
+{% endblock %}

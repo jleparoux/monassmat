@@ -136,6 +136,11 @@ class Contract(Base):
         cascade="all, delete-orphan",
     )
 
+    week_schedules: Mapped[list["ContractWeekSchedule"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+    )
+
 
 class Workday(Base):
     __tablename__ = "workday"
@@ -222,6 +227,27 @@ class ContractSettingsSnapshot(Base):
     salary_net_ceiling: Mapped[float | None] = mapped_column(Float)
 
     contract: Mapped["Contract"] = relationship(back_populates="settings_snapshots")
+
+
+class ContractWeekSchedule(Base):
+    __tablename__ = "contract_week_schedule"
+    __table_args__ = (
+        UniqueConstraint(
+            "contract_id",
+            "week_start",
+            name="uq_contract_week_schedule",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_id: Mapped[int] = mapped_column(
+        ForeignKey("contract.id"),
+        nullable=False,
+    )
+    week_start: Mapped[date] = mapped_column(Date, nullable=False)
+    planned: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    contract: Mapped["Contract"] = relationship(back_populates="week_schedules")
 
 
 class PaidLeave(Base):
