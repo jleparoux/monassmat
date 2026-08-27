@@ -62,6 +62,7 @@ def upsert_settings_snapshot(
     fee_meal_amount: float | None,
     fee_maintenance_amount: float | None,
     salary_net_ceiling: float | None,
+    complementary_hourly_rate: float | None = None,
 ) -> ContractSettingsSnapshot:
     stmt = select(ContractSettingsSnapshot).where(
         ContractSettingsSnapshot.contract_id == contract_id,
@@ -73,6 +74,7 @@ def upsert_settings_snapshot(
         existing.weeks_per_year = weeks_per_year
         existing.year_mode = year_mode
         existing.hourly_rate = hourly_rate
+        existing.complementary_hourly_rate = complementary_hourly_rate
         existing.days_per_week = days_per_week
         existing.monday_hours = monday_hours
         existing.tuesday_hours = tuesday_hours
@@ -95,6 +97,7 @@ def upsert_settings_snapshot(
         weeks_per_year=weeks_per_year,
         year_mode=year_mode,
         hourly_rate=hourly_rate,
+        complementary_hourly_rate=complementary_hourly_rate,
         days_per_week=days_per_week,
         monday_hours=monday_hours,
         tuesday_hours=tuesday_hours,

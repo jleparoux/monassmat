@@ -8,6 +8,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Synthese mensuelle: `/contracts/{id}/month_summary?start=YYYY-MM-DD&end=YYYY-MM-DD`
 - Synthese annuelle: `/contracts/{id}/year_summary?year=YYYY`
 - Page synthese annuelle: `/contracts/{id}/summary/year?year=YYYY`
+- Preparation Pajemploi: `/contracts/{id}/pajemploi?month=YYYY-MM-01`
 - Page liste contrats: `/contracts`
 - Creation contrat: `/contracts/new`
 - Types de journee: travail, absence, conge sans solde, jour ferie
@@ -27,6 +28,12 @@ Regles implementees et testees dans `calculations.py`:
   jusqu'a 45 h, heures majorees au-dela de 45 h;
 - deduction d'absence en accueil sur 52 semaines: salaire mensualise x heures
   d'absence / heures exactes du planning dans le mois.
+- deduction d'absence en accueil sur 46 semaines ou moins: salaire mensualise
+  x jours d'absence / jours habituels du planning dans le mois;
+- champs Pajemploi sans absence: heures normales arrondies au plus proche et
+  jours d'activite mensualises arrondis au-dessus;
+- mois avec absence non remuneree: heures normales recalculees a partir de la
+  remuneration due et jours d'activite reels.
 
 La classification hebdomadaire et les deux formules de deduction sont branchees
 au recapitulatif. Conformement a l'article 111, les semaines de non-accueil et
@@ -37,15 +44,37 @@ produire une approximation. Le compteur de
 conges payes visible dans l'interface est une estimation historique non
 fiabilisee, notamment pour les periodes de reference partiellement travaillees.
 
+Le taux net des heures complementaires est un fait contractuel explicite et
+historise. Les contrats existants ne sont pas completes automatiquement: le
+taux peut etre identique au taux de base ou avoir ete majore par accord ecrit.
 Le coefficient de majoration des heures au-dela de 45 h/semaine est optionnel,
-mais doit etre au minimum de 1,10 lorsqu'il est renseigne. Tant que la fiche de
-preparation Pajemploi n'est pas terminee, le total affiche reste un repere de
-suivi et non un salaire net a declarer.
+mais doit etre au minimum de 1,10 lorsqu'il est renseigne.
+
+## Preparation Pajemploi
+
+La fiche mensuelle rassemble les champs a recopier: periode, heures normales,
+heures complementaires et majorees, jours d'activite, conges payes, salaire net,
+entretien et repas. Un export dedie est disponible via
+`/contracts/{id}/export/pajemploi.csv?month=YYYY-MM-01`.
+
+La fiche distingue:
+- les blocages qui empechent un calcul fiable (planning ou taux manquant,
+  changement de parametres dans le mois, deduction d'absence incomplete);
+- les controles manuels qui restent necessaires (date de paiement, conges
+  payes en accueil sur 46 semaines ou moins, indemnites kilometriques).
+
+Les conges payes verses sont ajoutes au salaire net lorsqu'un paiement de type
+`paid_leave` couvre le mois. Leur nombre de jours doit encore etre verifie
+manuellement. Les contrats prevoyant plus de 45 heures par semaine ne sont pas
+encore pris en charge par la fiche. Le recapitulatif historique conserve son
+libelle « repere de suivi » et ne remplace pas cette preparation declarative.
 
 Sources officielles:
 - [Convention collective, articles 96.4 et 108 a 111](https://www.legifrance.gouv.fr/conv_coll/id/KALIARTI000043942282)
 - [Calcul et declaration de la remuneration](https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html)
 - [Gestion des conges payes](https://www.urssaf.fr/accueil/particulier/particulier-employeur/gerer-les-absences/gestion-conges-payes.html)
+- [Guide de declaration Pajemploi](https://www.urssaf.fr/accueil/services/services-particuliers/service-pajemploi/declarer-service-pajemploi.html)
+- [Declaration par enfant depuis janvier 2026](https://www.urssaf.fr/accueil/actualites/pajemploi-declaration-par-enfant.html)
 
 ## Import assmat-tracker
 - Script: `scripts/import_assmat_tracker.py`

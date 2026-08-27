@@ -19,12 +19,128 @@ from monassmat.calculations import (
     hours_in_period,
     paid_leave_acquired_days,
     paid_leave_value,
+    prepare_pajemploi_declaration,
     scheduled_hours_for_day,
     validate_majoration_coefficient,
     validate_regular_contract_weeks,
     validate_weekly_schedule,
     weekly_schedule_total,
 )
+
+
+def test_prepare_pajemploi_declaration_52_weeks_with_extra_hours():
+    preparation = prepare_pajemploi_declaration(
+        monthly_salary=416.0,
+        hourly_rate=3.0,
+        hours_per_week=32.0,
+        weeks_per_year=52.0,
+        scheduled_days_per_week=4,
+        absence_deduction=0.0,
+        actual_activity_days=None,
+        complementary_hours=13.0,
+        complementary_hourly_rate=3.20,
+        majorated_hours=5.0,
+        majorated_hourly_rate=3.50,
+        paid_leave_amount=0.0,
+    )
+
+    assert preparation.normal_hours == 139
+    assert preparation.activity_days == 18
+    assert preparation.salary_before_extra_hours == pytest.approx(416.0)
+    assert preparation.complementary_pay == pytest.approx(41.60)
+    assert preparation.majorated_pay == pytest.approx(17.50)
+    assert preparation.net_salary == pytest.approx(475.10)
+    assert preparation.blockers == ()
+
+
+def test_prepare_pajemploi_declaration_46_weeks_or_less():
+    preparation = prepare_pajemploi_declaration(
+        monthly_salary=370.0,
+        hourly_rate=3.0,
+        hours_per_week=40.0,
+        weeks_per_year=37.0,
+        scheduled_days_per_week=4,
+        absence_deduction=0.0,
+        actual_activity_days=None,
+        complementary_hours=5.0,
+        complementary_hourly_rate=3.20,
+        majorated_hours=5.0,
+        majorated_hourly_rate=3.50,
+        paid_leave_amount=0.0,
+    )
+
+    assert preparation.normal_hours == 123
+    assert preparation.activity_days == 13
+    assert preparation.net_salary == pytest.approx(403.50)
+
+
+def test_prepare_pajemploi_declaration_uses_due_salary_after_absence():
+    preparation = prepare_pajemploi_declaration(
+        monthly_salary=416.0,
+        hourly_rate=3.0,
+        hours_per_week=32.0,
+        weeks_per_year=52.0,
+        scheduled_days_per_week=4,
+        absence_deduction=195.76,
+        actual_activity_days=9,
+        complementary_hours=0.0,
+        complementary_hourly_rate=None,
+        majorated_hours=0.0,
+        majorated_hourly_rate=None,
+        paid_leave_amount=0.0,
+    )
+
+    assert preparation.normal_hours == 73
+    assert preparation.activity_days == 9
+    assert preparation.salary_before_extra_hours == pytest.approx(220.24)
+    assert preparation.net_salary == pytest.approx(220.24)
+    assert preparation.blockers == ()
+
+
+def test_prepare_pajemploi_declaration_blocks_missing_extra_hour_rate():
+    preparation = prepare_pajemploi_declaration(
+        monthly_salary=416.0,
+        hourly_rate=3.0,
+        hours_per_week=32.0,
+        weeks_per_year=52.0,
+        scheduled_days_per_week=4,
+        absence_deduction=0.0,
+        actual_activity_days=None,
+        complementary_hours=2.0,
+        complementary_hourly_rate=None,
+        majorated_hours=1.0,
+        majorated_hourly_rate=None,
+        paid_leave_amount=0.0,
+    )
+
+    assert preparation.complementary_pay is None
+    assert preparation.majorated_pay is None
+    assert preparation.net_salary is None
+    assert len(preparation.blockers) == 2
+
+
+def test_prepare_pajemploi_declaration_blocks_unreliable_absence():
+    preparation = prepare_pajemploi_declaration(
+        monthly_salary=416.0,
+        hourly_rate=3.0,
+        hours_per_week=32.0,
+        weeks_per_year=52.0,
+        scheduled_days_per_week=4,
+        absence_deduction=None,
+        actual_activity_days=None,
+        complementary_hours=0.0,
+        complementary_hourly_rate=None,
+        majorated_hours=0.0,
+        majorated_hourly_rate=None,
+        paid_leave_amount=0.0,
+    )
+
+    assert preparation.normal_hours is None
+    assert preparation.activity_days is None
+    assert preparation.net_salary is None
+    assert preparation.blockers == (
+        "La deduction d'absence doit etre fiabilisee.",
+    )
 
 
 def test_classify_weekly_hours_matches_urssaf_example():

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Preparation Pajemploi</h1>
+    <p class="page-subtitle">Champs a reporter pour {{ month_label }}, calcules contrat par contrat.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/calendar?initial_date={{ period_start }}">Calendrier</a>
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/export/pajemploi.csv?month={{ period_start }}">Telecharger le CSV</a>
+  </div>
+</div>
+
+<div class="summary-nav">
+  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/pajemploi?month={{ previous_month }}">← Mois precedent</a>
+  <strong>{{ month_label }}</strong>
+  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/pajemploi?month={{ next_month }}">Mois suivant →</a>
+</div>
+
+{% if calculation_ready %}
+  <div class="notice notice--ok">
+    Le calcul du salaire et des champs d'activite est pret. Effectuez encore les controles manuels listes ci-dessous avant validation sur Pajemploi.
+  </div>
+{% else %}
+  <div class="notice notice--warning">
+    Cette preparation n'est pas encore prete a recopier. Aucun montant manquant n'a ete estime automatiquement.
+  </div>
+{% endif %}
+
+{% if blockers %}
+  <section class="card">
+    <div class="card__header"><div class="title">A completer avant declaration</div></div>
+    <div class="card__body">
+      {% for item in blockers %}
+        <div class="notice notice--warning">{{ item }}</div>
+      {% endfor %}
+      <div class="actions">
+        <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/settings">Verifier les parametres du contrat</a>
+      </div>
+    </div>
+  </section>
+{% endif %}
+
+<div class="summary-split">
+  <section class="card">
+    <div class="card__header">
+      <div>
+        <div class="title">Champs Pajemploi</div>
+        <div class="muted">Declaration par enfant depuis janvier 2026</div>
+      </div>
+    </div>
+    <div class="card__body">
+      <div class="summary-list">
+        <div class="summary-row">
+          <span class="label">Periode d'emploi</span>
+          <span class="value">{{ period_start }} → {{ period_end }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Heures normales</span>
+          <span class="value">{% if preparation and preparation.normal_hours is not none %}{{ preparation.normal_hours }} h{% else %}A completer{% endif %}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Heures complementaires</span>
+          <span class="value">{{ summary.hours_complementary | round(2) }} h</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Heures majorees</span>
+          <span class="value">{{ summary.hours_majorated | round(2) }} h</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Jours d'activite</span>
+          <span class="value">{% if preparation and preparation.activity_days is not none %}{{ preparation.activity_days }} j{% else %}A completer{% endif %}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Jours de conges payes</span>
+          <span class="value">
+            {% if year_mode == "complete" %}
+              Non applicable (52 semaines)
+            {% elif paid_leave_days is not none %}
+              {{ paid_leave_days }} j
+            {% else %}
+              A completer
+            {% endif %}
+          </span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Salaire net du mois</span>
+          <span class="value highlight">
+            {% if preparation and preparation.net_salary is not none %}
+              {{ preparation.net_salary | round(2) }} €
+            {% else %}
+              A completer
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card__header"><div class="title">Detail du salaire net</div></div>
+    <div class="card__body">
+      <div class="summary-list">
+        <div class="summary-row">
+          <span class="label">Mensualisation contractuelle</span>
+          <span class="value">{{ summary.monthly_salary_theoretical | round(2) }} €</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Deduction d'absence</span>
+          <span class="value">-{{ summary.unpaid_leave_deduction | round(2) }} €</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Heures complementaires</span>
+          <span class="value">{% if preparation and preparation.complementary_pay is not none %}{{ preparation.complementary_pay | round(2) }} €{% else %}A completer{% endif %}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Heures majorees</span>
+          <span class="value">{% if preparation and preparation.majorated_pay is not none %}{{ preparation.majorated_pay | round(2) }} €{% else %}A completer{% endif %}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Conges payes verses</span>
+          <span class="value">{% if preparation %}{{ preparation.paid_leave_amount | round(2) }} €{% else %}—{% endif %}</span>
+        </div>
+        <div class="divider"></div>
+        <div class="summary-row">
+          <span class="label">Salaire net</span>
+          <span class="value highlight">{% if preparation and preparation.net_salary is not none %}{{ preparation.net_salary | round(2) }} €{% else %}A completer{% endif %}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="summary-split">
+  <section class="card">
+    <div class="card__header"><div class="title">Indemnites a declarer separement</div></div>
+    <div class="card__body">
+      <div class="summary-list">
+        <div class="summary-row">
+          <span class="label">Entretien</span>
+          <span class="value">{{ summary.fee_maintenance_total | round(2) }} €</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Repas</span>
+          <span class="value">{{ summary.fee_meal_total | round(2) }} €</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Kilometriques</span>
+          <span class="value">A completer si applicable</span>
+        </div>
+        <div class="divider"></div>
+        <div class="summary-row">
+          <span class="label">Total connu hors kilometres</span>
+          <span class="value highlight">{{ meal_and_maintenance_total | round(2) }} €</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card__header"><div class="title">Paiement et controles</div></div>
+    <div class="card__body">
+      {% if monthly_payments %}
+        {% for payment in monthly_payments %}
+          <div class="summary-row">
+            <span class="label">Paiement enregistre</span>
+            <span class="value">{{ payment.amount | round(2) }} € le {{ payment.paid_at }}</span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="summary-row">
+          <span class="label">Date de paiement</span>
+          <span class="value">A renseigner</span>
+        </div>
+      {% endif %}
+      {% for item in checks %}
+        <div class="notice notice--warning">{{ item }}</div>
+      {% endfor %}
+      <div class="actions">
+        <a class="btn btn-primary" href="/contracts/{{ contract_id }}/payments?period_start={{ period_start }}&period_end={{ period_end }}{% if preparation and preparation.net_salary is not none %}&amount={{ preparation.net_salary | round(2) }}{% endif %}">Enregistrer le paiement</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+<p class="hint">
+  Cette fiche est une aide a la saisie, pas une transmission automatique. Verifiez les valeurs avant de valider la declaration Pajemploi.
+</p>
+
+{% endblock %}

@@ -31,17 +31,19 @@ from .calculations import (
     paid_leave_acquired_days_v1,
     paid_leave_value,
     parse_holidays_response,
+    prepare_pajemploi_declaration,
     scheduled_hours_for_day,
     validate_majoration_coefficient,
     validate_regular_contract_weeks,
     validate_weekly_schedule,
+    weekly_schedule_total,
 )
 from .calculations import (
     ContractYearMode as CalcContractYearMode,
 )
 from .calculations import WorkdayKind as CalcWorkdayKind
 from .db import get_db, session_scope
-from .models import Contract, ContractYearMode, WorkdayKind
+from .models import Contract, ContractYearMode, PaymentKind, WorkdayKind
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # .../monassmat/
@@ -123,6 +125,20 @@ def parse_optional_int(value: str | None) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def parse_optional_positive_float(
+    value: str | None,
+    *,
+    field_label: str,
+) -> float | None:
+    parsed = parse_optional_float(value)
+    if parsed is not None and parsed <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_label} doit etre strictement positif.",
+        )
+    return parsed
 
 
 def parse_majoration_coefficient(value: str | None) -> float | None:
@@ -233,6 +249,11 @@ def snapshot_from_contract(contract, valid_from: date) -> dict:
         "weeks_per_year": contract.weeks_per_year,
         "year_mode": contract.year_mode,
         "hourly_rate": contract.hourly_rate,
+        "complementary_hourly_rate": getattr(
+            contract,
+            "complementary_hourly_rate",
+            None,
+        ),
         "days_per_week": contract.days_per_week,
         "monday_hours": contract.monday_hours,
         "tuesday_hours": contract.tuesday_hours,
@@ -256,6 +277,11 @@ def snapshot_from_row(row) -> dict:
         "weeks_per_year": row.weeks_per_year,
         "year_mode": row.year_mode,
         "hourly_rate": row.hourly_rate,
+        "complementary_hourly_rate": getattr(
+            row,
+            "complementary_hourly_rate",
+            None,
+        ),
         "days_per_week": row.days_per_week,
         "monday_hours": row.monday_hours,
         "tuesday_hours": row.tuesday_hours,
@@ -659,6 +685,181 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
         return summary
 
 
+def build_pajemploi_preparation(contract_id: int, month: date) -> dict:
+    start, end = month_bounds(month)
+    summary = build_month_summary(contract_id, start, end)
+
+    with session_scope() as db:
+        contract = crud.get_contract(db, contract_id)
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
+
+        snapshots = crud.list_settings_snapshots(db, contract_id)
+        settings = build_settings_timeline(contract, snapshots)
+        current = settings_for_day(settings, start)
+        workdays = crud.list_workdays(db, contract_id, start, end)
+        workdays_by_date = {item.date: item for item in workdays}
+        payments = [
+            item
+            for item in crud.list_payments(db, contract_id)
+            if item.period_start <= end and item.period_end >= start
+        ]
+
+        blockers: list[str] = []
+        checks: list[str] = []
+        calculation_context_supported = True
+        if any(start < item.valid_from <= end for item in snapshots):
+            blockers.append(
+                "Des parametres contractuels changent pendant le mois; "
+                "le calcul doit etre verifie manuellement."
+            )
+            calculation_context_supported = False
+        if contract.start_date > start or (
+            contract.end_date is not None and contract.end_date < end
+        ):
+            blockers.append(
+                "Un debut ou une fin de contrat intervient pendant le mois; "
+                "cette periode doit etre verifiee manuellement."
+            )
+            calculation_context_supported = False
+
+        schedule = schedule_from_settings(current)
+        try:
+            schedule_total = weekly_schedule_total(schedule)
+        except ValueError:
+            schedule_total = None
+        scheduled_days_per_week = (
+            sum(1 for hours in schedule if hours is not None and hours > 0)
+            if schedule_total is not None
+            else 0
+        )
+        if scheduled_days_per_week == 0:
+            blockers.append(
+                "Le planning hebdomadaire doit etre complete avant de preparer "
+                "la declaration."
+            )
+            calculation_context_supported = False
+
+        actual_activity_days: int | None = 0
+        for day in iter_days(start, end):
+            if not contract_is_active_on(contract, day):
+                continue
+            applicable = settings_for_day(settings, day)
+            try:
+                scheduled_hours = scheduled_hours_for_day(
+                    schedule_from_settings(applicable),
+                    day,
+                )
+            except ValueError:
+                scheduled_hours = None
+            if scheduled_hours is None:
+                actual_activity_days = None
+                break
+            workday = workdays_by_date.get(day)
+            if scheduled_hours > 0 and (
+                workday is None or workday.kind != WorkdayKind.UNPAID_LEAVE
+            ):
+                actual_activity_days += 1
+
+        if current["hours_per_week"] > 45:
+            blockers.append(
+                "Les contrats prevoyant plus de 45 h par semaine ne sont pas "
+                "encore pris en charge par cette fiche."
+            )
+            calculation_context_supported = False
+
+        paid_leave_payments = [
+            item for item in payments if item.kind == PaymentKind.PAID_LEAVE
+        ]
+        paid_leave_amount = sum(item.amount for item in paid_leave_payments)
+        monthly_payments = [
+            item for item in payments if item.kind == PaymentKind.MONTHLY
+        ]
+
+        majorated_hourly_rate = None
+        coefficient = current["majoration_rate"]
+        if coefficient is not None and coefficient >= 1.10:
+            majorated_hourly_rate = current["hourly_rate"] * coefficient
+
+        preparation = None
+        if (
+            calculation_context_supported
+            and summary.monthly_salary_theoretical > 0
+        ):
+            preparation = prepare_pajemploi_declaration(
+                monthly_salary=summary.monthly_salary_theoretical,
+                hourly_rate=current["hourly_rate"],
+                hours_per_week=current["hours_per_week"],
+                weeks_per_year=current["weeks_per_year"],
+                scheduled_days_per_week=scheduled_days_per_week,
+                absence_deduction=(
+                    summary.unpaid_leave_deduction
+                    if summary.absence_deduction_reliable
+                    else None
+                ),
+                actual_activity_days=actual_activity_days,
+                complementary_hours=summary.hours_complementary,
+                complementary_hourly_rate=current[
+                    "complementary_hourly_rate"
+                ],
+                majorated_hours=summary.hours_majorated,
+                majorated_hourly_rate=majorated_hourly_rate,
+                paid_leave_amount=paid_leave_amount,
+            )
+            blockers.extend(preparation.blockers)
+
+        if current["year_mode"] == ContractYearMode.INCOMPLETE:
+            if paid_leave_amount > 0:
+                blockers.append(
+                    "Un paiement de conges payes est enregistre, mais le nombre "
+                    "de jours payes n'est pas attribue a ce mois."
+                )
+            else:
+                checks.append(
+                    "Confirmer qu'aucun conge paye n'a ete verse ce mois-ci."
+                )
+
+        if not monthly_payments:
+            checks.append(
+                "La date de paiement reste a renseigner lors du versement."
+            )
+        checks.append(
+            "Ajouter manuellement les indemnites kilometriques si elles "
+            "s'appliquent."
+        )
+
+        calculation_ready = (
+            preparation is not None
+            and preparation.net_salary is not None
+            and not blockers
+        )
+        return {
+            "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
+            "period_start": start,
+            "period_end": end,
+            "month_label": f"{MONTH_NAMES[start.month - 1]} {start.year}",
+            "previous_month": (start - timedelta(days=1)).replace(day=1),
+            "next_month": (end + timedelta(days=1)).replace(day=1),
+            "year_mode": current["year_mode"].value,
+            "summary": summary,
+            "preparation": preparation,
+            "blockers": blockers,
+            "checks": checks,
+            "calculation_ready": calculation_ready,
+            "paid_leave_days": (
+                None
+                if current["year_mode"] == ContractYearMode.COMPLETE
+                or paid_leave_amount > 0
+                else 0
+            ),
+            "meal_and_maintenance_total": (
+                summary.fee_meal_total + summary.fee_maintenance_total
+            ),
+            "monthly_payments": monthly_payments,
+        }
+
+
 def fetch_holidays_api(year: int) -> dict[str, str]:
     url = f"https://calendrier.api.gouv.fr/jours-feries/metropole/{year}.json"
     with urllib.request.urlopen(url, timeout=10) as resp:
@@ -923,6 +1124,67 @@ def export_monthly_csv(contract_id: int, start: date, end: date):
     )
 
 
+@app.get("/contracts/{contract_id}/export/pajemploi.csv")
+def export_pajemploi_csv(
+    contract_id: int,
+    month: date | None = None,
+):
+    selected_month = (month or date.today()).replace(day=1)
+    data = build_pajemploi_preparation(contract_id, selected_month)
+    preparation = data["preparation"]
+    summary = data["summary"]
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Champ Pajemploi", "Valeur"])
+    writer.writerow(["Période", f"{data['period_start']} → {data['period_end']}"])
+    writer.writerow(
+        ["Heures normales", preparation.normal_hours if preparation else ""]
+    )
+    writer.writerow(["Heures complémentaires", round(summary.hours_complementary, 2)])
+    writer.writerow(["Heures majorées", round(summary.hours_majorated, 2)])
+    writer.writerow(
+        ["Jours d'activité", preparation.activity_days if preparation else ""]
+    )
+    writer.writerow(
+        [
+            "Jours de congés payés",
+            data["paid_leave_days"]
+            if data["paid_leave_days"] is not None
+            else "À vérifier / non applicable",
+        ]
+    )
+    writer.writerow(
+        [
+            "Salaire net",
+            round(preparation.net_salary, 2)
+            if preparation and preparation.net_salary is not None
+            else "",
+        ]
+    )
+    writer.writerow(["Indemnités entretien", round(summary.fee_maintenance_total, 2)])
+    writer.writerow(["Frais repas", round(summary.fee_meal_total, 2)])
+    writer.writerow(["Indemnités kilométriques", "À compléter si applicable"])
+    writer.writerow([])
+    writer.writerow(
+        [
+            "Statut du calcul",
+            "Prêt" if data["calculation_ready"] else "À compléter",
+        ]
+    )
+    for blocker in data["blockers"]:
+        writer.writerow(["Blocage", blocker])
+    for check in data["checks"]:
+        writer.writerow(["Contrôle manuel", check])
+
+    filename = f"monassmat_pajemploi_{selected_month.strftime('%Y-%m')}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @app.get("/contracts/{contract_id}/export/yearly.csv")
 def export_yearly_csv(contract_id: int, year: int):
     data = build_year_summary(contract_id, year)
@@ -1011,6 +1273,25 @@ def calendar_page(
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "initial_date": initial_date.isoformat(),
             "current_section": "calendar",
+        },
+    )
+
+
+@app.get("/contracts/{contract_id}/pajemploi", response_class=HTMLResponse)
+def pajemploi_preparation_page(
+    contract_id: int,
+    request: Request,
+    month: date | None = None,
+):
+    selected_month = (month or date.today()).replace(day=1)
+    data = build_pajemploi_preparation(contract_id, selected_month)
+    return templates.TemplateResponse(
+        request,
+        "pajemploi_preparation.html",
+        {
+            "title": "Preparation Pajemploi",
+            "current_section": "pajemploi",
+            **data,
         },
     )
 
@@ -1142,6 +1423,7 @@ def save_contract_settings(
     weeks_per_year: str = Form(...),
     year_mode: str = Form(...),
     hourly_rate: str = Form(...),
+    complementary_hourly_rate: str | None = Form(None),
     days_per_week: str | None = Form(None),
     monday_hours: str | None = Form(None),
     tuesday_hours: str | None = Form(None),
@@ -1183,6 +1465,7 @@ def save_contract_settings(
         "weeks_per_year": contract.weeks_per_year,
         "year_mode": contract.year_mode,
         "hourly_rate": contract.hourly_rate,
+        "complementary_hourly_rate": contract.complementary_hourly_rate,
         "days_per_week": contract.days_per_week,
         "monday_hours": contract.monday_hours,
         "tuesday_hours": contract.tuesday_hours,
@@ -1205,6 +1488,10 @@ def save_contract_settings(
     contract.weeks_per_year = parsed_weeks_per_year
     contract.year_mode = parsed_year_mode
     contract.hourly_rate = float(hourly_rate)
+    contract.complementary_hourly_rate = parse_optional_positive_float(
+        complementary_hourly_rate,
+        field_label="Le taux des heures complementaires",
+    )
     contract.days_per_week = parse_optional_int(days_per_week)
     for field_name, value in parsed_schedule.items():
         setattr(contract, field_name, value)
@@ -1225,6 +1512,9 @@ def save_contract_settings(
             weeks_per_year=previous_values["weeks_per_year"],
             year_mode=previous_values["year_mode"],
             hourly_rate=previous_values["hourly_rate"],
+            complementary_hourly_rate=previous_values[
+                "complementary_hourly_rate"
+            ],
             days_per_week=previous_values["days_per_week"],
             monday_hours=previous_values["monday_hours"],
             tuesday_hours=previous_values["tuesday_hours"],
@@ -1247,6 +1537,7 @@ def save_contract_settings(
         weeks_per_year=contract.weeks_per_year,
         year_mode=contract.year_mode,
         hourly_rate=contract.hourly_rate,
+        complementary_hourly_rate=contract.complementary_hourly_rate,
         days_per_week=contract.days_per_week,
         monday_hours=contract.monday_hours,
         tuesday_hours=contract.tuesday_hours,
@@ -1338,6 +1629,7 @@ def save_settings_snapshot(
     weeks_per_year: str = Form(...),
     year_mode: str = Form(...),
     hourly_rate: str = Form(...),
+    complementary_hourly_rate: str | None = Form(None),
     days_per_week: str | None = Form(None),
     monday_hours: str | None = Form(None),
     tuesday_hours: str | None = Form(None),
@@ -1415,6 +1707,10 @@ def save_settings_snapshot(
         weeks_per_year=parsed_weeks_per_year,
         year_mode=parsed_year_mode,
         hourly_rate=float(hourly_rate),
+        complementary_hourly_rate=parse_optional_positive_float(
+            complementary_hourly_rate,
+            field_label="Le taux des heures complementaires",
+        ),
         days_per_week=parse_optional_int(days_per_week),
         **parsed_schedule,
         majoration_threshold=parse_optional_float(majoration_threshold),
@@ -2054,6 +2350,7 @@ def create_contract(
     weeks_per_year: str = Form(...),
     year_mode: str = Form(...),
     hourly_rate: str = Form(...),
+    complementary_hourly_rate: str | None = Form(None),
     days_per_week: str | None = Form(None),
     monday_hours: str | None = Form(None),
     tuesday_hours: str | None = Form(None),
@@ -2106,6 +2403,10 @@ def create_contract(
         weeks_per_year=parsed_weeks_per_year,
         year_mode=parsed_year_mode,
         hourly_rate=float(hourly_rate),
+        complementary_hourly_rate=parse_optional_positive_float(
+            complementary_hourly_rate,
+            field_label="Le taux des heures complementaires",
+        ),
         days_per_week=parse_optional_int(days_per_week),
         **parsed_schedule,
         majoration_threshold=parse_optional_float(majoration_threshold),
@@ -2125,6 +2426,7 @@ def create_contract(
         weeks_per_year=contract.weeks_per_year,
         year_mode=contract.year_mode,
         hourly_rate=contract.hourly_rate,
+        complementary_hourly_rate=contract.complementary_hourly_rate,
         days_per_week=contract.days_per_week,
         monday_hours=contract.monday_hours,
         tuesday_hours=contract.tuesday_hours,

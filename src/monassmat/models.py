@@ -91,6 +91,7 @@ class Contract(Base):
         default=ContractYearMode.COMPLETE,
     )
     hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    complementary_hourly_rate: Mapped[float | None] = mapped_column(Float)
     days_per_week: Mapped[int | None] = mapped_column(Integer)
     monday_hours: Mapped[float | None] = mapped_column(Float)
     tuesday_hours: Mapped[float | None] = mapped_column(Float)
@@ -212,6 +213,7 @@ class ContractSettingsSnapshot(Base):
         default=ContractYearMode.COMPLETE,
     )
     hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    complementary_hourly_rate: Mapped[float | None] = mapped_column(Float)
     days_per_week: Mapped[int | None] = mapped_column(Integer)
     monday_hours: Mapped[float | None] = mapped_column(Float)
     tuesday_hours: Mapped[float | None] = mapped_column(Float)

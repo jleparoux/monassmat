@@ -54,9 +54,140 @@ class WeeklyHoursBreakdown:
     majorated_hours: float
 
 
+@dataclass(frozen=True)
+class PajemploiPreparation:
+    normal_hours: int | None
+    activity_days: int | None
+    salary_before_extra_hours: float | None
+    complementary_pay: float | None
+    majorated_pay: float | None
+    paid_leave_amount: float
+    net_salary: float | None
+    blockers: tuple[str, ...]
+
+
 def _assert_positive(name: str, value: float) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be > 0 (got {value})")
+
+
+def _round_positive_half_up(value: float) -> int:
+    if value < 0:
+        raise ValueError(f"value must be >= 0 (got {value})")
+    return math.floor(value + 0.5)
+
+
+def prepare_pajemploi_declaration(
+    *,
+    monthly_salary: float,
+    hourly_rate: float,
+    hours_per_week: float,
+    weeks_per_year: float,
+    scheduled_days_per_week: int,
+    absence_deduction: float | None,
+    actual_activity_days: int | None,
+    complementary_hours: float,
+    complementary_hourly_rate: float | None,
+    majorated_hours: float,
+    majorated_hourly_rate: float | None,
+    paid_leave_amount: float,
+) -> PajemploiPreparation:
+    """Prepare the numeric fields of one monthly Pajemploi declaration.
+
+    The function deliberately returns blockers instead of guessing missing
+    contractual rates or an unreliable absence deduction. Indemnities are not
+    salary and therefore stay outside this calculation.
+    """
+    _assert_positive("monthly_salary", monthly_salary)
+    _assert_positive("hourly_rate", hourly_rate)
+    _assert_positive("hours_per_week", hours_per_week)
+    _assert_positive("weeks_per_year", weeks_per_year)
+    if not 1 <= scheduled_days_per_week <= 7:
+        raise ValueError("scheduled_days_per_week must be between 1 and 7")
+    if complementary_hours < 0 or majorated_hours < 0:
+        raise ValueError("extra hours must be >= 0")
+    if paid_leave_amount < 0:
+        raise ValueError("paid_leave_amount must be >= 0")
+    if absence_deduction is not None and absence_deduction < 0:
+        raise ValueError("absence_deduction must be >= 0")
+    if actual_activity_days is not None and actual_activity_days < 0:
+        raise ValueError("actual_activity_days must be >= 0")
+
+    blockers: list[str] = []
+    salary_before_extra_hours: float | None
+    normal_hours: int | None
+    activity_days: int | None
+
+    if absence_deduction is None:
+        blockers.append("La deduction d'absence doit etre fiabilisee.")
+        salary_before_extra_hours = None
+        normal_hours = None
+        activity_days = None
+    else:
+        salary_before_extra_hours = max(monthly_salary - absence_deduction, 0.0)
+        if absence_deduction > 0:
+            normal_hours = _round_positive_half_up(
+                salary_before_extra_hours / hourly_rate
+            )
+            if actual_activity_days is None:
+                blockers.append(
+                    "Le nombre reel de jours d'activite doit etre fiabilise."
+                )
+                activity_days = None
+            else:
+                activity_days = actual_activity_days
+        else:
+            normal_hours = _round_positive_half_up(
+                hours_per_week * weeks_per_year / 12.0
+            )
+            activity_days = math.ceil(
+                scheduled_days_per_week * weeks_per_year / 12.0
+            )
+
+    complementary_pay: float | None = 0.0
+    if complementary_hours > 0:
+        if complementary_hourly_rate is None or complementary_hourly_rate <= 0:
+            blockers.append(
+                "Le taux net des heures complementaires doit etre renseigne."
+            )
+            complementary_pay = None
+        else:
+            complementary_pay = complementary_hours * complementary_hourly_rate
+
+    majorated_pay: float | None = 0.0
+    if majorated_hours > 0:
+        if majorated_hourly_rate is None or majorated_hourly_rate <= 0:
+            blockers.append(
+                "Le taux net des heures majorees doit etre renseigne."
+            )
+            majorated_pay = None
+        else:
+            majorated_pay = majorated_hours * majorated_hourly_rate
+
+    net_salary = None
+    if (
+        not blockers
+        and salary_before_extra_hours is not None
+        and complementary_pay is not None
+        and majorated_pay is not None
+    ):
+        net_salary = (
+            salary_before_extra_hours
+            + complementary_pay
+            + majorated_pay
+            + paid_leave_amount
+        )
+
+    return PajemploiPreparation(
+        normal_hours=normal_hours,
+        activity_days=activity_days,
+        salary_before_extra_hours=salary_before_extra_hours,
+        complementary_pay=complementary_pay,
+        majorated_pay=majorated_pay,
+        paid_leave_amount=paid_leave_amount,
+        net_salary=net_salary,
+        blockers=tuple(blockers),
+    )
 
 
 def hours_between_times(start: time, end: time) -> float:

@@ -1,5 +1,13 @@
 # Changelog
 
+## Non publie
+
+### Preparation Pajemploi
+- Fiche mensuelle par enfant avec statut calculable ou incomplet
+- Calcul des heures normales et jours d'activite, y compris les mois avec absence
+- Taux contractuel des heures complementaires historise sans extrapolation des anciens contrats
+- Export CSV des champs a recopier et controles manuels explicites
+
 ## [1.0.0] — 2026-05
 
 ### Nouvelles fonctionnalités (mise à jour gratuite Early Access)

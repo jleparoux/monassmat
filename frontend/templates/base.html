@@ -19,7 +19,7 @@
     <div class="container topbar__inner">
       <a class="brand" href="/contracts">MonAssmat</a>
       {% if contract_id %}
-        {% set _labels = {"calendar": "Calendrier", "year": "Synthèse annuelle", "paid-leave": "Congés payés", "payments": "Paiements", "settings": "Paramètres", "planning": "Semaines programmées"} %}
+        {% set _labels = {"calendar": "Calendrier", "year": "Synthèse annuelle", "paid-leave": "Congés payés", "payments": "Paiements", "settings": "Paramètres", "planning": "Semaines programmées", "pajemploi": "Préparation Pajemploi"} %}
         <div class="topbar__breadcrumb">
           <a href="/contracts" class="breadcrumb__back">← {{ contract_name or ("Contrat #" ~ contract_id) }}</a>
           {% if current_section %}
