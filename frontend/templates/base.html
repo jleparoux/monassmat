@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark" />
   <title>{{ title or "MonAssmat" }}</title>
 
-  <link rel="stylesheet" href="/static/app.css?v=20260828-2" />
+  <link rel="stylesheet" href="/static/app.css?v=20260828-3" />
   <script>
     // Inline pour éviter le flash au chargement
     (function(){var t=localStorage.getItem('monassmat-theme')||'auto';var dark=t==='dark'||(t==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
@@ -19,21 +19,10 @@
     <div class="container topbar__inner">
       <a class="brand" href="/contracts">MonAssmat</a>
       {% if contract_id %}
-        {% set _labels = {"calendar": "Calendrier", "year": "Synthèse annuelle", "paid-leave": "Congés payés", "payments": "Paiements", "settings": "Paramètres", "planning": "Semaines programmées", "pajemploi": "Préparation Pajemploi"} %}
         <div class="topbar__breadcrumb">
-          <a href="/contracts" class="breadcrumb__back">← {{ contract_name or ("Contrat #" ~ contract_id) }}</a>
-          {% if current_section %}
-            <span class="breadcrumb__sep">/</span>
-            <span class="breadcrumb__current">{{ _labels[current_section] if current_section in _labels else current_section }}</span>
-          {% endif %}
-        </div>
-        <div class="topbar__ctx-actions">
-          {% if current_section != "year" %}
-            <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year">📊 Synthèse</a>
-          {% endif %}
-          {% if current_section != "settings" %}
-            <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/settings">⚙️</a>
-          {% endif %}
+          <a href="/contracts" class="breadcrumb__back">← Mes contrats</a>
+          <span class="breadcrumb__sep">/</span>
+          <a href="/contracts/{{ contract_id }}/overview" class="breadcrumb__current">{{ contract_name or ("Contrat #" ~ contract_id) }}</a>
         </div>
       {% else %}
         <nav class="topbar__nav">
@@ -43,6 +32,20 @@
       {% endif %}
       <button id="theme-toggle" class="theme-toggle" title="Thème" aria-label="Changer le thème">◐</button>
     </div>
+    {% if contract_id %}
+      {% set _pajemploi_month = initial_date if initial_date is defined else (period_start if current_section == "pajemploi" and period_start is defined else "") %}
+      <div class="contract-nav-shell">
+        <nav class="container contract-nav" aria-label="Navigation du contrat">
+          <a class="contract-nav__item {% if current_section == 'overview' %}is-active{% endif %}" href="/contracts/{{ contract_id }}/overview">Vue d'ensemble</a>
+          <a class="contract-nav__item {% if current_section == 'calendar' %}is-active{% endif %}" href="/contracts/{{ contract_id }}/calendar{% if initial_date is defined %}?initial_date={{ initial_date }}{% endif %}">Calendrier</a>
+          <a class="contract-nav__item {% if current_section == 'pajemploi' %}is-active{% endif %}" data-pajemploi-link href="/contracts/{{ contract_id }}/pajemploi{% if _pajemploi_month %}?month={{ _pajemploi_month }}{% endif %}">Déclaration</a>
+          <a class="contract-nav__item {% if current_section == 'paid-leave' %}is-active{% endif %}" href="/contracts/{{ contract_id }}/paid-leave">Congés payés</a>
+          <a class="contract-nav__item {% if current_section == 'year' %}is-active{% endif %}" href="/contracts/{{ contract_id }}/summary/year">Synthèse</a>
+          <a class="contract-nav__item {% if current_section == 'payments' %}is-active{% endif %}" href="/contracts/{{ contract_id }}/payments">Paiements</a>
+          <a class="contract-nav__item {% if current_section in ['settings', 'planning'] %}is-active{% endif %}" href="/contracts/{{ contract_id }}/settings">Contrat</a>
+        </nav>
+      </div>
+    {% endif %}
   </header>
 
   <main class="container">
@@ -51,7 +54,7 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="/static/calendar.js?v=20260827-2"></script>
+  <script src="/static/calendar.js?v=20260828-3"></script>
   <script src="/static/theme.js"></script>
   {% block scripts %}{% endblock %}
 </body>

@@ -7,7 +7,7 @@
 
   const monthTitle = document.getElementById("monthTitle");
   const summaryPeriod = document.getElementById("summaryPeriod");
-  const pajemploiLink = document.getElementById("pajemploiLink");
+  const pajemploiLinks = document.querySelectorAll("[data-pajemploi-link]");
   const prevBtn = document.getElementById("prevMonth");
   const nextBtn = document.getElementById("nextMonth");
   const monthPicker = document.getElementById("monthPicker");
@@ -113,8 +113,9 @@
   }
 
   function updatePajemploiLink() {
-    if (!pajemploiLink) return;
-    pajemploiLink.href = `/contracts/${contractId}/pajemploi?month=${ymd(startOfMonth(current))}`;
+    pajemploiLinks.forEach((link) => {
+      link.href = `/contracts/${contractId}/pajemploi?month=${ymd(startOfMonth(current))}`;
+    });
   }
 
 

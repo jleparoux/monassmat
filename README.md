@@ -1,6 +1,13 @@
 # monassmat
 Le suivi simplifie des contrats d'assistante maternelle.
 
+## Parcours utilisateur
+
+- La liste `/contracts` donne le statut du mois et l'action prioritaire de chaque contrat.
+- La vue `/contracts/{id}/overview` rassemble la prochaine action, l'avancement `calendrier → declaration → paiement`, les reperes du mois et les points a fiabiliser.
+- Une navigation de contrat stable relie la vue d'ensemble, le calendrier, la declaration, les conges payes, la synthese, les paiements et les parametres.
+- Le mois selectionne dans le calendrier est conserve lors du passage a la preparation de la declaration.
+
 ## Calendrier
 - Page: `/contracts/{id}/calendar`
 - API workdays: `/api/contracts/{id}/workdays?start=YYYY-MM-DD&end=YYYY-MM-DD`

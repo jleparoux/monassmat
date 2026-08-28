@@ -59,10 +59,10 @@
         </div>
       </div>
       <div class="action-grid">
+        <a class="action-grid__item" href="/contracts/{{ item.id }}/overview">Vue d'ensemble</a>
         <a class="action-grid__item action-grid__item--primary" href="{{ item.action_href }}">{{ item.action_label }}</a>
         <a class="action-grid__item" href="/contracts/{{ item.id }}/calendar">Calendrier</a>
-        <a class="action-grid__item" href="/contracts/{{ item.id }}/summary/year">Synthèse annuelle</a>
-        <a class="action-grid__item" href="/contracts/{{ item.id }}/settings">Contrat</a>
+        <a class="action-grid__item" href="/contracts/{{ item.id }}/summary/year">Synthèse</a>
       </div>
     </article>
   {% else %}

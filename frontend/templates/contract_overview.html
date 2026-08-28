@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header overview-page-header">
+  <div>
+    <div class="eyebrow">{{ child_name }}</div>
+    <h1 class="page-title">{{ contract_name }}</h1>
+    <p class="page-subtitle">Votre suivi pour {{ month_label }}.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/calendar?initial_date={{ month_start }}">Ouvrir le calendrier</a>
+  </div>
+</div>
+
+<section class="card next-action-card next-action-card--{{ tone }}">
+  <div class="next-action-card__content">
+    <div>
+      <span class="badge {% if tone == 'ok' %}badge--ok{% elif tone == 'warning' %}badge--warning{% endif %}">{{ label }}</span>
+      <div class="eyebrow">Prochaine action</div>
+      <h2>{{ action_label }}</h2>
+      <p>{{ action_detail }}</p>
+    </div>
+    <a class="btn btn-primary next-action-card__button" href="{{ action_href }}">{{ action_label }} →</a>
+  </div>
+</section>
+
+<section class="card monthly-workflow overview-workflow" aria-label="Avancement du mois">
+  <div class="card__header">
+    <div>
+      <div class="title">Le parcours de {{ month_label }}</div>
+      <div class="muted">Trois étapes, dans l'ordre.</div>
+    </div>
+  </div>
+  <div class="card__body workflow-steps">
+    <a class="workflow-step workflow-step--link {% if data_status == 'complete' %}is-done{% else %}is-current{% endif %}" href="/contracts/{{ contract_id }}/calendar?initial_date={{ month_start }}">
+      <span class="workflow-step__number">{% if data_status == 'complete' %}✓{% else %}1{% endif %}</span>
+      <div>
+        <strong>Calendrier</strong>
+        <span>{% if data_status == 'complete' %}Toutes les journées sont renseignées{% elif days_expected is none %}Planning contractuel manquant{% else %}{{ days_entered }} journée(s) sur {{ days_expected }} renseignée(s){% endif %}</span>
+      </div>
+    </a>
+    <a class="workflow-step workflow-step--link {% if declaration %}is-done{% elif data_status == 'complete' %}is-current{% endif %}" href="/contracts/{{ contract_id }}/pajemploi?month={{ month_start }}">
+      <span class="workflow-step__number">{% if declaration %}✓{% else %}2{% endif %}</span>
+      <div>
+        <strong>Déclaration</strong>
+        <span>{% if declaration %}Confirmée le {{ declaration.declared_on.strftime('%d/%m/%Y') }}{% elif data_status == 'complete' %}Prête à préparer{% else %}Après le calendrier{% endif %}</span>
+      </div>
+    </a>
+    <a class="workflow-step workflow-step--link {% if monthly_payments %}is-done{% elif declaration %}is-current{% endif %}" href="/contracts/{{ contract_id }}/payments?period_start={{ month_start }}&period_end={{ month_end }}">
+      <span class="workflow-step__number">{% if monthly_payments %}✓{% else %}3{% endif %}</span>
+      <div>
+        <strong>Paiement</strong>
+        <span>{% if monthly_payments %}{{ payment_total | round(2) }} € enregistré(s){% elif declaration %}À enregistrer{% else %}Après la déclaration{% endif %}</span>
+      </div>
+    </a>
+  </div>
+</section>
+
+<div class="overview-grid">
+  <section class="card">
+    <div class="card__header"><div class="title">Repères utiles</div></div>
+    <div class="card__body overview-kpis">
+      <a class="overview-kpi" href="/contracts/{{ contract_id }}/calendar?initial_date={{ month_start }}">
+        <span>Journées du mois</span>
+        <strong>{% if days_expected is not none %}{{ days_entered }} / {{ days_expected }}{% else %}À configurer{% endif %}</strong>
+        <small>{% if missing_days %}{{ missing_days }} encore attendue(s){% elif data_status == 'complete' %}Mois complet{% else %}Selon le planning{% endif %}</small>
+      </a>
+      <div class="overview-kpi">
+        <span>Mensualisation</span>
+        <strong>{{ monthly_salary_theoretical | round(2) }} €</strong>
+        <small>Repère contractuel net</small>
+      </div>
+      <a class="overview-kpi" href="/contracts/{{ contract_id }}/paid-leave?year={{ paid_leave_period_start.year }}">
+        <span>Congés payés</span>
+        {% if paid_leave.balance %}
+          <strong>{{ paid_leave.balance.remaining_days }} j</strong>
+          <small>{% if paid_leave.status == 'reliable' %}Solde fiable{% else %}Solde à confirmer{% endif %}</small>
+        {% else %}
+          <strong>À compléter</strong>
+          <small>Aucun solde inventé</small>
+        {% endif %}
+      </a>
+      <a class="overview-kpi" href="/contracts/{{ contract_id }}/payments">
+        <span>Paiement du mois</span>
+        <strong>{% if monthly_payments %}{{ payment_total | round(2) }} €{% else %}À venir{% endif %}</strong>
+        <small>{% if monthly_payments %}Enregistré dans l'application{% else %}Après la déclaration{% endif %}</small>
+      </a>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card__header"><div class="title">Points d'attention</div></div>
+    <div class="card__body overview-alerts">
+      {% if data_status == "schedule_missing" %}
+        <a class="attention-item attention-item--warning" href="/contracts/{{ contract_id }}/settings">
+          <span>1</span><div><strong>Planning contractuel absent</strong><small>Complétez les heures habituelles de la semaine.</small></div>
+        </a>
+      {% else %}
+        <div class="attention-item attention-item--ok"><span>✓</span><div><strong>Planning exploitable</strong><small>Le mois peut être contrôlé.</small></div></div>
+      {% endif %}
+      {% if paid_leave.status != "reliable" %}
+        <a class="attention-item attention-item--warning" href="/contracts/{{ contract_id }}/paid-leave?year={{ paid_leave_period_start.year }}">
+          <span>2</span><div><strong>Congés payés à fiabiliser</strong><small>Rattachez les périodes et confirmez l'historique.</small></div>
+        </a>
+      {% else %}
+        <div class="attention-item attention-item--ok"><span>✓</span><div><strong>Congés payés confirmés</strong><small>Le solde de la période est fiable.</small></div></div>
+      {% endif %}
+      {% if contract.year_mode.value == "incomplete" %}
+        <a class="attention-item" href="/contracts/{{ contract_id }}/planned-weeks?year={{ month_start.year }}">
+          <span>3</span><div><strong>Semaines programmées</strong><small>Vérifiez l'année {{ month_start.year }}.</small></div>
+        </a>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<section class="card overview-contract-card">
+  <div class="card__header">
+    <div>
+      <div class="title">Le contrat en bref</div>
+      <div class="muted">Les valeurs qui servent aux calculs.</div>
+    </div>
+    <a class="link" href="/contracts/{{ contract_id }}/settings">Modifier le contrat →</a>
+  </div>
+  <div class="card__body contract-facts">
+    <div><span>Accueil</span><strong>{% if contract.year_mode.value == "complete" %}52 semaines{% else %}46 semaines ou moins{% endif %}</strong></div>
+    <div><span>Horaire</span><strong>{{ contract.hours_per_week | round(2) }} h / semaine</strong></div>
+    <div><span>Taux net</span><strong>{{ contract.hourly_rate | round(2) }} € / heure</strong></div>
+    <div><span>Période</span><strong>{{ contract.start_date.strftime('%d/%m/%Y') }} → {{ contract.end_date.strftime('%d/%m/%Y') if contract.end_date else 'en cours' }}</strong></div>
+  </div>
+</section>
+
+{% endblock %}

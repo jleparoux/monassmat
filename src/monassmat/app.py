@@ -3026,124 +3026,187 @@ def update_child_route(
     )
 
 
+def build_contract_month_status(
+    db: Session,
+    *,
+    contract: Contract,
+    month: date,
+    as_of: date,
+) -> dict:
+    """Build the current monthly workflow from recorded contract facts."""
+    month_start = month.replace(day=1)
+    month_end = date(
+        month_start.year,
+        month_start.month,
+        calendar.monthrange(month_start.year, month_start.month)[1],
+    )
+    month_workdays = crud.list_workdays(
+        db,
+        contract.id,
+        month_start,
+        month_end,
+    )
+    snapshots = crud.list_settings_snapshots(db, contract.id)
+    settings = build_settings_timeline(contract, snapshots)
+    completeness = contract_month_completeness(
+        contract,
+        settings,
+        month_workdays,
+        start=month_start,
+        end=month_end,
+        as_of=as_of,
+    )
+    declaration = crud.get_monthly_declaration(
+        db,
+        contract_id=contract.id,
+        month=month_start,
+    )
+    monthly_payments = [
+        payment
+        for payment in crud.list_payments(db, contract.id)
+        if payment.kind == PaymentKind.MONTHLY
+        and payment.period_start <= month_end
+        and payment.period_end >= month_start
+    ]
+    workflow_status = monthly_workflow_status(
+        data_status=completeness.status,
+        declaration_confirmed=declaration is not None,
+        payment_recorded=bool(monthly_payments),
+    )
+
+    if workflow_status == MonthlyWorkflowStatus.SETUP_REQUIRED:
+        status_details = {
+            "label": "Planning à compléter",
+            "tone": "warning",
+            "action_label": "Compléter le contrat",
+            "action_detail": (
+                "Renseignez le planning hebdomadaire pour débloquer le suivi "
+                "et la déclaration."
+            ),
+            "action_href": f"/contracts/{contract.id}/settings",
+        }
+    elif workflow_status == MonthlyWorkflowStatus.DATA_ENTRY:
+        data_details = {
+            MonthDataStatus.NOT_STARTED: ("Mois à venir", "neutral"),
+            MonthDataStatus.INCOMPLETE: (
+                f"{completeness.missing_due_days} jour(s) à renseigner",
+                "warning",
+            ),
+            MonthDataStatus.UP_TO_DATE: (
+                "À jour jusqu'à aujourd'hui",
+                "ok",
+            ),
+        }
+        label, tone = data_details[completeness.status]
+        status_details = {
+            "label": label,
+            "tone": tone,
+            "action_label": (
+                "Compléter le mois"
+                if completeness.status == MonthDataStatus.INCOMPLETE
+                else "Continuer le suivi"
+            ),
+            "action_detail": (
+                "Saisissez les accueils, absences, frais et congés du mois "
+                "dans le calendrier."
+            ),
+            "action_href": (
+                f"/contracts/{contract.id}/calendar"
+                f"?initial_date={month_start.isoformat()}"
+            ),
+        }
+    else:
+        status_details = {
+            MonthlyWorkflowStatus.READY_TO_DECLARE: {
+                "label": "Prêt à déclarer",
+                "tone": "ok",
+                "action_label": "Préparer la déclaration",
+                "action_detail": (
+                    "Le calendrier est complet. Vérifiez les champs à "
+                    "reporter dans Pajemploi."
+                ),
+                "action_href": (
+                    f"/contracts/{contract.id}/pajemploi"
+                    f"?month={month_start.isoformat()}"
+                ),
+            },
+            MonthlyWorkflowStatus.DECLARED: {
+                "label": "Déclaration confirmée",
+                "tone": "ok",
+                "action_label": "Enregistrer le paiement",
+                "action_detail": (
+                    "La déclaration est confirmée. Conservez maintenant le "
+                    "paiement réellement effectué."
+                ),
+                "action_href": (
+                    f"/contracts/{contract.id}/payments"
+                    f"?period_start={month_start.isoformat()}"
+                    f"&period_end={month_end.isoformat()}"
+                ),
+            },
+            MonthlyWorkflowStatus.PAYMENT_RECORDED: {
+                "label": "Déclaration à confirmer",
+                "tone": "warning",
+                "action_label": "Confirmer la déclaration",
+                "action_detail": (
+                    "Un paiement est enregistré, mais la déclaration n'est "
+                    "pas encore confirmée dans l'application."
+                ),
+                "action_href": (
+                    f"/contracts/{contract.id}/pajemploi"
+                    f"?month={month_start.isoformat()}"
+                ),
+            },
+            MonthlyWorkflowStatus.CLOSED: {
+                "label": "Mois clôturé",
+                "tone": "ok",
+                "action_label": "Voir le récapitulatif",
+                "action_detail": (
+                    "Le calendrier, la déclaration et le paiement sont "
+                    "enregistrés pour ce mois."
+                ),
+                "action_href": (
+                    f"/contracts/{contract.id}/pajemploi"
+                    f"?month={month_start.isoformat()}"
+                ),
+            },
+        }[workflow_status]
+
+    facts = ContractFacts(
+        start_date=contract.start_date,
+        end_date=contract.end_date,
+        hours_per_week=contract.hours_per_week,
+        weeks_per_year=contract.weeks_per_year,
+        hourly_rate=contract.hourly_rate,
+    )
+    return {
+        "month_start": month_start,
+        "month_end": month_end,
+        "completeness": completeness,
+        "declaration": declaration,
+        "monthly_payments": monthly_payments,
+        "workflow_status": workflow_status.value,
+        "monthly_salary_theoretical": contract_monthly_salary(facts),
+        "days_entered": completeness.entered_days,
+        "days_expected": completeness.expected_days,
+        "missing_days": completeness.missing_days,
+        "data_status": completeness.status.value,
+        **status_details,
+    }
+
+
 @app.get("/contracts", response_class=HTMLResponse)
 def contracts_summary(request: Request, db: Session = Depends(get_db)):
     contracts = crud.list_contracts(db)
     today = date.today()
-    month_start = today.replace(day=1)
-    _, last_day = calendar.monthrange(today.year, today.month)
-    month_end = today.replace(day=last_day)
-
     items = []
     for contract in contracts:
-        facts = ContractFacts(
-            start_date=contract.start_date,
-            end_date=contract.end_date,
-            hours_per_week=contract.hours_per_week,
-            weeks_per_year=contract.weeks_per_year,
-            hourly_rate=contract.hourly_rate,
-        )
-        is_active = contract.end_date is None or contract.end_date >= today
-
-        month_workdays = crud.list_workdays(db, contract.id, month_start, month_end)
-        snapshots = crud.list_settings_snapshots(db, contract.id)
-        settings = build_settings_timeline(contract, snapshots)
-        completeness = contract_month_completeness(
-            contract,
-            settings,
-            month_workdays,
-            start=month_start,
-            end=month_end,
+        month_status = build_contract_month_status(
+            db,
+            contract=contract,
+            month=today,
             as_of=today,
         )
-        declaration = crud.get_monthly_declaration(
-            db,
-            contract_id=contract.id,
-            month=month_start,
-        )
-        payment_recorded = any(
-            payment.kind == PaymentKind.MONTHLY
-            and payment.period_start <= month_end
-            and payment.period_end >= month_start
-            for payment in crud.list_payments(db, contract.id)
-        )
-        workflow_status = monthly_workflow_status(
-            data_status=completeness.status,
-            declaration_confirmed=declaration is not None,
-            payment_recorded=payment_recorded,
-        )
-
-        if workflow_status == MonthlyWorkflowStatus.SETUP_REQUIRED:
-            status_details = {
-                "label": "Planning à compléter",
-                "tone": "warning",
-                "action_label": "Compléter le planning",
-                "action_href": f"/contracts/{contract.id}/settings",
-            }
-        elif workflow_status == MonthlyWorkflowStatus.DATA_ENTRY:
-            data_details = {
-                MonthDataStatus.NOT_STARTED: ("Mois à venir", "neutral"),
-                MonthDataStatus.INCOMPLETE: (
-                    f"{completeness.missing_due_days} jour(s) en retard",
-                    "warning",
-                ),
-                MonthDataStatus.UP_TO_DATE: (
-                    "À jour jusqu'à aujourd'hui",
-                    "ok",
-                ),
-            }
-            label, tone = data_details[completeness.status]
-            status_details = {
-                "label": label,
-                "tone": tone,
-                "action_label": (
-                    "Compléter le mois"
-                    if completeness.status == MonthDataStatus.INCOMPLETE
-                    else "Continuer le suivi"
-                ),
-                "action_href": f"/contracts/{contract.id}/calendar",
-            }
-        else:
-            status_details = {
-                MonthlyWorkflowStatus.READY_TO_DECLARE: {
-                    "label": "Prêt à déclarer",
-                    "tone": "ok",
-                    "action_label": "Préparer Pajemploi",
-                    "action_href": (
-                        f"/contracts/{contract.id}/pajemploi"
-                        f"?month={month_start.isoformat()}"
-                    ),
-                },
-                MonthlyWorkflowStatus.DECLARED: {
-                    "label": "Déclaration confirmée",
-                    "tone": "ok",
-                    "action_label": "Enregistrer le paiement",
-                    "action_href": (
-                        f"/contracts/{contract.id}/payments"
-                        f"?period_start={month_start.isoformat()}"
-                        f"&period_end={month_end.isoformat()}"
-                    ),
-                },
-                MonthlyWorkflowStatus.PAYMENT_RECORDED: {
-                    "label": "Déclaration à confirmer",
-                    "tone": "warning",
-                    "action_label": "Confirmer la déclaration",
-                    "action_href": (
-                        f"/contracts/{contract.id}/pajemploi"
-                        f"?month={month_start.isoformat()}"
-                    ),
-                },
-                MonthlyWorkflowStatus.CLOSED: {
-                    "label": "Mois clôturé",
-                    "tone": "ok",
-                    "action_label": "Voir le récapitulatif",
-                    "action_href": (
-                        f"/contracts/{contract.id}/pajemploi"
-                        f"?month={month_start.isoformat()}"
-                    ),
-                },
-            }[workflow_status]
-
         items.append(
             {
                 "id": contract.id,
@@ -3154,14 +3217,8 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
                 "hours_per_week": contract.hours_per_week,
                 "weeks_per_year": contract.weeks_per_year,
                 "hourly_rate": contract.hourly_rate,
-                "monthly_salary_theoretical": contract_monthly_salary(facts),
-                "is_active": is_active,
-                "days_entered": completeness.entered_days,
-                "days_expected": completeness.expected_days,
-                "missing_days": completeness.missing_days,
-                "data_status": completeness.status.value,
-                "workflow_status": workflow_status.value,
-                **status_details,
+                "is_active": contract.end_date is None or contract.end_date >= today,
+                **month_status,
             }
         )
 
@@ -3309,6 +3366,52 @@ def create_contract(
             "year_modes": [m.value for m in ContractYearMode],
             "children": children,
             "selected_child_id": None,
+        },
+    )
+
+
+@app.get("/contracts/{contract_id}/overview", response_class=HTMLResponse)
+def contract_overview(
+    contract_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    today = date.today()
+    month_status = build_contract_month_status(
+        db,
+        contract=contract,
+        month=today,
+        as_of=today,
+    )
+    paid_leave_period_start, _ = _paid_leave_year_bounds(today)
+    paid_leave = build_paid_leave_period_summary(
+        db,
+        contract=contract,
+        period_start=paid_leave_period_start,
+    )
+    payment_total = sum(
+        payment.amount for payment in month_status["monthly_payments"]
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "contract_overview.html",
+        {
+            "title": "Vue d'ensemble",
+            "contract_id": contract_id,
+            "contract_name": contract.name or f"Contrat #{contract_id}",
+            "child_name": contract.child.name if contract.child else "—",
+            "contract": contract,
+            "month_label": f"{MONTH_NAMES[today.month - 1]} {today.year}",
+            "payment_total": payment_total,
+            "paid_leave": paid_leave,
+            "paid_leave_period_start": paid_leave_period_start,
+            "current_section": "overview",
+            **month_status,
         },
     )
 
