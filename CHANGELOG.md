@@ -3,6 +3,7 @@
 ## Non publie
 
 ### Navigation et vue d'ensemble
+- Nouvelle page d'accueil avec synthese mensuelle, action prioritaire et cartes de contrats compactes
 - Nouvelle vue d'ensemble par contrat avec prochaine action et parcours mensuel explicite
 - Navigation stable entre calendrier, declaration, conges payes, synthese, paiements et contrat
 - Conservation du mois du calendrier lors du passage a la preparation de la declaration

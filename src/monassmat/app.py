@@ -3222,12 +3222,46 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
             }
         )
 
+    priority_order = {
+        MonthlyWorkflowStatus.SETUP_REQUIRED.value: 0,
+        MonthlyWorkflowStatus.DATA_ENTRY.value: 1,
+        MonthlyWorkflowStatus.READY_TO_DECLARE.value: 2,
+        MonthlyWorkflowStatus.PAYMENT_RECORDED.value: 3,
+        MonthlyWorkflowStatus.DECLARED.value: 4,
+        MonthlyWorkflowStatus.CLOSED.value: 5,
+    }
+    active_items = sorted(
+        (item for item in items if item["is_active"]),
+        key=lambda item: priority_order[item["workflow_status"]],
+    )
+    closed_items = [item for item in items if not item["is_active"]]
+    focus_item = next(
+        (
+            item
+            for item in active_items
+            if item["workflow_status"] != MonthlyWorkflowStatus.CLOSED.value
+        ),
+        active_items[0] if active_items else None,
+    )
+    completed_count = sum(
+        item["workflow_status"] == MonthlyWorkflowStatus.CLOSED.value
+        for item in active_items
+    )
+
     return templates.TemplateResponse(
         request,
         "contracts_summary.html",
         {
-            "title": "Contrats",
-            "items": items,
+            "title": "Accueil",
+            "active_items": active_items,
+            "closed_items": closed_items,
+            "focus_item": focus_item,
+            "active_count": len(active_items),
+            "completed_count": completed_count,
+            "action_count": len(active_items) - completed_count,
+            "monthly_salary_total": sum(
+                item["monthly_salary_theoretical"] for item in active_items
+            ),
             "month_name": MONTH_NAMES[today.month - 1],
             "month_year": today.year,
         },

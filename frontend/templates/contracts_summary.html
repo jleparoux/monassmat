@@ -1,99 +1,157 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Mes contrats</h1>
-  </div>
-  <div class="page-actions">
-    <a class="btn btn-primary" href="/contracts/new">+ Nouveau contrat</a>
-  </div>
-</div>
-
-<section class="contracts-grid">
-  {% for item in items if item.is_active %}
-    {% set has_progress = item.days_expected is not none and item.days_expected > 0 %}
-    {% set pct = ((item.days_entered / item.days_expected) * 100) | round | int if has_progress else 0 %}
-    {% set pct_capped = [pct, 100] | min %}
-    {% set bar_cls = "progress-bar__fill--ok" if item.data_status in ["complete", "up_to_date"] else "progress-bar__fill--warn" %}
-    <article class="card">
-      <div class="card__header">
-        <div>
-          <div class="title">{{ item.child_name }}{% if item.name %} · {{ item.name }}{% endif %}</div>
-          <div class="muted">{{ item.hours_per_week | round(1) }}h/sem · {{ item.weeks_per_year | round(0) | int }} sem/an · {{ item.hourly_rate }} €/h</div>
-        </div>
-        <span class="badge {% if item.tone == 'ok' %}badge--ok{% elif item.tone == 'warning' %}badge--warning{% endif %}">{{ item.label }}</span>
-      </div>
-      <div class="card__body">
-        {% if item.days_expected is none %}
-          <div class="notice notice--warning">
-            Le planning hebdomadaire manque : l'application ne peut pas déterminer les jours à renseigner.
-          </div>
-        {% else %}
-          <div class="progress-row">
-            <div class="progress-label">
-              <span>{{ month_name }} {{ month_year }} — journées renseignées</span>
-              <span class="{% if item.data_status == 'complete' %}text-ok{% else %}muted{% endif %}">{{ item.days_entered }} / {{ item.days_expected }}</span>
-            </div>
-            <div class="progress-bar">
-              <div class="progress-bar__fill {{ bar_cls }}" style="width: {{ pct_capped }}%"></div>
-            </div>
-          </div>
-        {% endif %}
-        <div class="contract-kpis">
-          <div class="kpi">
-            <div class="kpi__label">Mensualisation contractuelle</div>
-            <div class="kpi__value">{{ item.monthly_salary_theoretical | round(2) }} €</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi__label">Déclaration du mois</div>
-            <div class="kpi__value kpi__value--small">
-              {% if item.workflow_status == "closed" %}Déclarée et payée
-              {% elif item.workflow_status == "declared" %}Déclarée, paiement à saisir
-              {% elif item.workflow_status == "payment_recorded" %}Confirmation à saisir
-              {% elif item.workflow_status == "ready_to_declare" %}Prête à préparer
-              {% elif item.workflow_status == "setup_required" %}Bloquée
-              {% else %}Après saisie{% endif %}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="action-grid">
-        <a class="action-grid__item" href="/contracts/{{ item.id }}/overview">Vue d'ensemble</a>
-        <a class="action-grid__item action-grid__item--primary" href="{{ item.action_href }}">{{ item.action_label }}</a>
-        <a class="action-grid__item" href="/contracts/{{ item.id }}/calendar">Calendrier</a>
-        <a class="action-grid__item" href="/contracts/{{ item.id }}/summary/year">Synthèse</a>
-      </div>
-    </article>
-  {% else %}
-    <div class="empty">
-      Aucun contrat actif.
-      <a href="/contracts/new" class="link">Créer un contrat →</a>
+<section class="home-hero">
+  <div class="home-hero__content">
+    <div class="eyebrow">Accueil · {{ month_name }} {{ month_year }}</div>
+    <h1>Votre suivi, simplement.</h1>
+    <p>Retrouvez l'action prioritaire du mois et l'état de chaque contrat au même endroit.</p>
+    <div class="home-hero__actions">
+      <a class="btn btn-primary" href="/contracts/new">+ Nouveau contrat</a>
+      <a class="btn btn-secondary" href="/children">Gérer les enfants</a>
     </div>
-  {% endfor %}
+  </div>
+  <div class="home-hero__mark" aria-hidden="true">
+    <span>{{ month_name[:3] | upper }}</span>
+    <strong>{{ month_year }}</strong>
+  </div>
 </section>
 
-{% set closed_items = items | rejectattr("is_active") | list %}
-{% if closed_items %}
-  <details class="contracts-closed">
-    <summary>Voir les contrats clos ({{ closed_items | length }})</summary>
-    <div class="contracts-grid" style="margin-top: 12px;">
-      {% for item in closed_items %}
-        <article class="card">
-          <div class="card__header">
+{% if active_count %}
+<section class="home-metrics" aria-label="Synthèse du mois">
+  <div class="home-metric">
+    <span>Contrats actifs</span>
+    <strong>{{ active_count }}</strong>
+    <small>{% if active_count > 1 %}enfants suivis{% elif active_count == 1 %}enfant suivi{% else %}à créer{% endif %}</small>
+  </div>
+  <div class="home-metric">
+    <span>Mois clôturés</span>
+    <strong>{{ completed_count }} / {{ active_count }}</strong>
+    <small>déclaration et paiement enregistrés</small>
+  </div>
+  <div class="home-metric {% if action_count %}home-metric--attention{% else %}home-metric--ok{% endif %}">
+    <span>À traiter</span>
+    <strong>{{ action_count }}</strong>
+    <small>{% if action_count %}prochaine action affichée ci-dessous{% else %}tout est à jour{% endif %}</small>
+  </div>
+  <div class="home-metric">
+    <span>Mensualisations</span>
+    <strong>{{ monthly_salary_total | round(2) }} €</strong>
+    <small>repère contractuel total</small>
+  </div>
+</section>
+{% endif %}
+
+{% if focus_item and focus_item.workflow_status != "closed" %}
+<section class="home-focus home-focus--{{ focus_item.tone }}">
+  <div class="home-focus__main">
+    <div class="home-focus__identity">
+      <span class="home-avatar">{{ focus_item.child_name[:1] | upper }}</span>
+      <div>
+        <span class="eyebrow">Prochaine action · {{ focus_item.child_name }}</span>
+        <h2>{{ focus_item.action_label }}</h2>
+        <p>{{ focus_item.action_detail }}</p>
+      </div>
+    </div>
+    <div class="home-focus__actions">
+      <a class="btn btn-primary" href="{{ focus_item.action_href }}">{{ focus_item.action_label }} →</a>
+      <a class="btn btn-secondary" href="/contracts/{{ focus_item.id }}/overview">Voir la vue d'ensemble</a>
+    </div>
+  </div>
+  <div class="home-focus__workflow" aria-label="Avancement de {{ focus_item.child_name }}">
+    <div class="home-mini-step {% if focus_item.data_status == 'complete' %}is-done{% else %}is-current{% endif %}">
+      <span>{% if focus_item.data_status == 'complete' %}✓{% else %}1{% endif %}</span>
+      <div><strong>Calendrier</strong><small>{% if focus_item.data_status == 'complete' %}Complet{% elif focus_item.days_expected is none %}À configurer{% else %}{{ focus_item.days_entered }} / {{ focus_item.days_expected }} jours{% endif %}</small></div>
+    </div>
+    <div class="home-mini-step {% if focus_item.declaration %}is-done{% elif focus_item.data_status == 'complete' %}is-current{% endif %}">
+      <span>{% if focus_item.declaration %}✓{% else %}2{% endif %}</span>
+      <div><strong>Déclaration</strong><small>{% if focus_item.declaration %}Confirmée{% elif focus_item.data_status == 'complete' %}À préparer{% else %}Ensuite{% endif %}</small></div>
+    </div>
+    <div class="home-mini-step {% if focus_item.monthly_payments %}is-done{% elif focus_item.declaration %}is-current{% endif %}">
+      <span>{% if focus_item.monthly_payments %}✓{% else %}3{% endif %}</span>
+      <div><strong>Paiement</strong><small>{% if focus_item.monthly_payments %}Enregistré{% elif focus_item.declaration %}À saisir{% else %}En dernier{% endif %}</small></div>
+    </div>
+  </div>
+</section>
+{% elif focus_item %}
+<section class="home-focus home-focus--ok home-focus--complete">
+  <div>
+    <span class="badge badge--ok">Tout est à jour</span>
+    <h2>{{ month_name }} est clôturé</h2>
+    <p>Les déclarations et paiements de tous les contrats actifs sont enregistrés.</p>
+  </div>
+</section>
+{% endif %}
+
+<section class="home-section">
+  <div class="home-section__header">
+    <div>
+      <h2>Vos contrats</h2>
+      <p>Un aperçu compact ; ouvrez un contrat pour accéder à tous ses détails.</p>
+    </div>
+  </div>
+
+  {% if active_items %}
+  <div class="home-contracts-grid">
+    {% for item in active_items %}
+      {% set has_progress = item.days_expected is not none and item.days_expected > 0 %}
+      {% set pct = ((item.days_entered / item.days_expected) * 100) | round | int if has_progress else 0 %}
+      {% set pct_capped = [pct, 100] | min %}
+      <article class="home-contract-card">
+        <div class="home-contract-card__header">
+          <div class="home-contract-card__identity">
+            <span class="home-avatar home-avatar--small">{{ item.child_name[:1] | upper }}</span>
             <div>
-              <div class="title">{{ item.child_name }}{% if item.name %} · {{ item.name }}{% endif %}</div>
-              <div class="muted">Clos le {{ item.end_date.strftime("%d/%m/%Y") if item.end_date else "—" }}</div>
+              <h3>{{ item.child_name }}</h3>
+              <span>{{ item.name or "Contrat" }} · {{ item.hours_per_week | round(1) }} h/semaine</span>
             </div>
-            <span class="badge">Clos</span>
           </div>
-          <div class="action-grid">
-            <a class="action-grid__item" href="/contracts/{{ item.id }}/calendar">📅 Calendrier</a>
-            <a class="action-grid__item" href="/contracts/{{ item.id }}/summary/year">📊 Synthèse</a>
-            <a class="action-grid__item" href="/contracts/{{ item.id }}/paid-leave">🌴 Congés</a>
-            <a class="action-grid__item" href="/contracts/{{ item.id }}/settings">⚙️ Paramètres</a>
+          <span class="badge {% if item.tone == 'ok' %}badge--ok{% elif item.tone == 'warning' %}badge--warning{% endif %}">{{ item.label }}</span>
+        </div>
+        <div class="home-contract-card__body">
+          <div class="home-contract-card__salary">
+            <span>Mensualisation</span>
+            <strong>{{ item.monthly_salary_theoretical | round(2) }} €</strong>
           </div>
-        </article>
+          <div class="home-contract-card__progress">
+            <div>
+              <span>Calendrier de {{ month_name | lower }}</span>
+              <strong>{% if item.days_expected is none %}Planning à configurer{% else %}{{ item.days_entered }} / {{ item.days_expected }} jours{% endif %}</strong>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-bar__fill {% if item.data_status in ['complete', 'up_to_date'] %}progress-bar__fill--ok{% else %}progress-bar__fill--warn{% endif %}" style="width: {{ pct_capped if has_progress else 0 }}%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="home-contract-card__footer">
+          <a href="/contracts/{{ item.id }}/overview">Ouvrir le contrat</a>
+          <a href="/contracts/{{ item.id }}/calendar?initial_date={{ item.month_start }}">Calendrier →</a>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+  {% else %}
+    <div class="home-empty">
+      <span class="home-empty__icon" aria-hidden="true">＋</span>
+      <h2>Commencez par créer un contrat</h2>
+      <p>Ajoutez d'abord l'enfant, puis renseignez les éléments du contrat pour débloquer le calendrier.</p>
+      <div class="home-hero__actions">
+        <a class="btn btn-primary" href="/contracts/new">Créer un contrat</a>
+        <a class="btn btn-secondary" href="/children">Gérer les enfants</a>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% if closed_items %}
+  <details class="contracts-closed home-closed-contracts">
+    <summary>Contrats clos ({{ closed_items | length }})</summary>
+    <div class="home-closed-list">
+      {% for item in closed_items %}
+        <div>
+          <span><strong>{{ item.child_name }}</strong> · {{ item.name or "Contrat" }} · clos le {{ item.end_date.strftime("%d/%m/%Y") if item.end_date else "—" }}</span>
+          <a class="link" href="/contracts/{{ item.id }}/overview">Consulter</a>
+        </div>
       {% endfor %}
     </div>
   </details>
