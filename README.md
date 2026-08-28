@@ -3,7 +3,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 
 ## Parcours utilisateur
 
-- L'accueil `/contracts` donne la synthese du mois, l'action prioritaire et un apercu compact de chaque contrat.
+- L'accueil `/` donne la synthese du mois, l'action prioritaire et un apercu compact de chaque contrat. L'ancienne URL `/contracts` redirige vers cet index.
 - La vue `/contracts/{id}/overview` rassemble la prochaine action, l'avancement `calendrier → declaration → paiement`, les reperes du mois et les points a fiabiliser.
 - Une navigation de contrat stable relie la vue d'ensemble, le calendrier, la declaration, les conges payes, la synthese, les paiements et les parametres.
 - Le mois selectionne dans le calendrier est conserve lors du passage a la preparation de la declaration.
@@ -17,7 +17,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Synthese annuelle: `/contracts/{id}/year_summary?year=YYYY`
 - Page synthese annuelle: `/contracts/{id}/summary/year?year=YYYY`
 - Preparation Pajemploi: `/contracts/{id}/pajemploi?month=YYYY-MM-01`
-- Page liste contrats: `/contracts`
+- Page d'accueil et liste des contrats: `/` (`/contracts` redirige vers `/`)
 - Creation contrat: `/contracts/new`
 - Types de journee: travail, absence, conge sans solde, jour ferie
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")

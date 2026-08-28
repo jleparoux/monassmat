@@ -17,16 +17,16 @@
 <body>
   <header class="topbar">
     <div class="container topbar__inner">
-      <a class="brand" href="/contracts">MonAssmat</a>
+      <a class="brand" href="/">MonAssmat</a>
       {% if contract_id %}
         <div class="topbar__breadcrumb">
-          <a href="/contracts" class="breadcrumb__back">← Mes contrats</a>
+          <a href="/" class="breadcrumb__back">← Accueil</a>
           <span class="breadcrumb__sep">/</span>
           <a href="/contracts/{{ contract_id }}/overview" class="breadcrumb__current">{{ contract_name or ("Contrat #" ~ contract_id) }}</a>
         </div>
       {% else %}
         <nav class="topbar__nav">
-          <a href="/contracts">Accueil</a>
+          <a href="/">Accueil</a>
           <a href="/children">Enfants</a>
         </nav>
       {% endif %}

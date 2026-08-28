@@ -81,11 +81,6 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="stati
 templates = Jinja2Templates(directory=str(FRONTEND_DIR / "templates"))
 
 
-@app.get("/")
-def home():
-    return RedirectResponse(url="/contracts", status_code=302)
-
-
 date_from_iso = date.fromisoformat
 MONTH_NAMES = [
     "Janvier",
@@ -3195,7 +3190,12 @@ def build_contract_month_status(
     }
 
 
-@app.get("/contracts", response_class=HTMLResponse)
+@app.get("/contracts")
+def contracts_legacy_redirect():
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.get("/", response_class=HTMLResponse)
 def contracts_summary(request: Request, db: Session = Depends(get_db)):
     contracts = crud.list_contracts(db)
     today = date.today()
