@@ -1,4 +1,3 @@
-import calendar
 from datetime import date
 
 import pytest
@@ -6,18 +5,24 @@ import pytest
 from monassmat.calculations import (
     ContractFacts,
     ContractYearMode,
+    MonthDataStatus,
     PaidLeaveMethod,
     Period,
+    ScheduledDayFacts,
     WorkdayFacts,
     WorkdayKind,
     absence_deduction_46_weeks,
     absence_deduction_52_weeks,
+    additional_child_paid_leave_days,
     allocate_weekly_hours,
     classify_weekly_hours,
     contract_monthly_hours,
     contract_monthly_salary,
+    evaluate_month_completeness,
     hours_in_period,
     paid_leave_acquired_days,
+    paid_leave_reference_period,
+    paid_leave_taken_dates,
     paid_leave_value,
     prepare_pajemploi_declaration,
     scheduled_hours_for_day,
@@ -397,32 +402,117 @@ def test_paid_leave_value_dixieme_returns_reference_amount():
     assert amount == 120.0
 
 
-def test_days_expected_may_2026():
-    """Vérifie qu'on compte bien les lun-ven d'un mois donné."""
-    _, last_day = calendar.monthrange(2026, 5)
-    days = sum(1 for day in range(1, last_day + 1) if date(2026, 5, day).weekday() < 5)
-    assert days == 21  # Mai 2026 : 21 jours ouvrés (lun-ven)
+def test_month_completeness_uses_contract_schedule():
+    scheduled_days = [
+        ScheduledDayFacts(date(2026, 8, 3), 9.0),
+        ScheduledDayFacts(date(2026, 8, 4), 0.0),
+        ScheduledDayFacts(date(2026, 8, 5), 9.0),
+    ]
 
-
-def test_paid_leave_acquired_days_complete_mode():
-    assert (
-        paid_leave_acquired_days(mode=ContractYearMode.COMPLETE, extra_days=0)
-        == 30
+    result = evaluate_month_completeness(
+        scheduled_days,
+        recorded_dates=[date(2026, 8, 3)],
+        as_of=date(2026, 8, 5),
     )
+
+    assert result.status == MonthDataStatus.INCOMPLETE
+    assert result.expected_days == 2
+    assert result.entered_days == 1
+    assert result.missing_due_days == 1
+
+
+def test_month_completeness_distinguishes_up_to_date_from_complete():
+    scheduled_days = [
+        ScheduledDayFacts(date(2026, 8, 27), 9.0),
+        ScheduledDayFacts(date(2026, 8, 28), 9.0),
+    ]
+
+    result = evaluate_month_completeness(
+        scheduled_days,
+        recorded_dates=[date(2026, 8, 27)],
+        as_of=date(2026, 8, 27),
+    )
+
+    assert result.status == MonthDataStatus.UP_TO_DATE
+    assert result.missing_days == 1
+    assert result.missing_due_days == 0
+
+
+def test_month_completeness_does_not_guess_missing_schedule():
+    result = evaluate_month_completeness(
+        [ScheduledDayFacts(date(2026, 8, 3), None)],
+        recorded_dates=[date(2026, 8, 3)],
+        as_of=date(2026, 8, 3),
+    )
+
+    assert result.status == MonthDataStatus.SCHEDULE_MISSING
+    assert result.expected_days is None
+    assert result.missing_days is None
+
+
+def test_paid_leave_acquired_days_full_period_is_capped_at_30():
+    assert paid_leave_acquired_days(worked_weeks=52) == 30
 
 
 def test_paid_leave_acquired_days_incomplete_rounds_up():
+    acquired = paid_leave_acquired_days(worked_weeks=41)
+    assert acquired == 26
+
+
+def test_paid_leave_acquired_days_includes_partial_worked_week():
     acquired = paid_leave_acquired_days(
-        mode=ContractYearMode.INCOMPLETE,
-        weeks_worked=41.0,
+        worked_weeks=40,
+        worked_days=2,
+        scheduled_days_per_week=4,
     )
     assert acquired == 26
 
 
-def test_paid_leave_acquired_days_with_extra_days():
-    acquired = paid_leave_acquired_days(
-        mode=ContractYearMode.INCOMPLETE,
-        weeks_worked=40.0,
-        extra_days=4,
+def test_additional_child_days_are_capped_for_employee_21_or_over():
+    assert additional_child_paid_leave_days(
+        base_days=27,
+        dependent_children=2,
+        employee_under_21=False,
+    ) == 3
+
+
+def test_additional_child_days_for_employee_under_21_can_exceed_30():
+    assert additional_child_paid_leave_days(
+        base_days=30,
+        dependent_children=2,
+        employee_under_21=True,
+    ) == 4
+
+
+def test_paid_leave_reference_period_runs_from_june_to_may():
+    assert paid_leave_reference_period(date(2026, 5, 31)) == Period(
+        start=date(2025, 6, 1),
+        end=date(2026, 5, 31),
     )
-    assert acquired == 29
+    assert paid_leave_reference_period(date(2026, 6, 1)) == Period(
+        start=date(2026, 6, 1),
+        end=date(2027, 5, 31),
+    )
+
+
+def test_paid_leave_taken_dates_counts_saturday_after_friday():
+    dates = paid_leave_taken_dates(
+        absence_start=date(2025, 5, 30),
+        absence_end=date(2025, 5, 30),
+        scheduled_weekdays={0, 1, 2, 3, 4},
+    )
+
+    assert dates == (date(2025, 5, 30), date(2025, 5, 31))
+
+
+def test_paid_leave_taken_dates_excludes_sunday_and_public_holiday():
+    dates = paid_leave_taken_dates(
+        absence_start=date(2025, 8, 4),
+        absence_end=date(2025, 8, 29),
+        scheduled_weekdays={0, 1, 2, 3, 4},
+        holidays={date(2025, 8, 15)},
+    )
+
+    assert len(dates) == 23
+    assert date(2025, 8, 15) not in dates
+    assert all(day.weekday() != 6 for day in dates)

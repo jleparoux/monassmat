@@ -1,139 +1,118 @@
 <div class="summary-kpis">
   <div class="kpi">
-    <div class="kpi__label">Repere de suivi non declaratif</div>
-    <div class="kpi__value">{{ totals.total_estimated | round(2) }} €</div>
+    <div class="kpi__label">Mois finalisés</div>
+    <div class="kpi__value">{{ totals.months_complete }} / {{ totals.months_expected }}</div>
   </div>
   <div class="kpi">
-    <div class="kpi__label">Valeur des heures saisies</div>
-    <div class="kpi__value">{{ totals.salary_real_estimated | round(2) }} €</div>
+    <div class="kpi__label">Heures des mois finalisés</div>
+    <div class="kpi__value">{{ totals.hours_real | round(2) }} h</div>
   </div>
   <div class="kpi">
-    <div class="kpi__label">Frais</div>
+    <div class="kpi__label">Frais des mois finalisés</div>
     <div class="kpi__value">{{ (totals.fee_meal_total + totals.fee_maintenance_total) | round(2) }} €</div>
   </div>
   <div class="kpi">
-    <div class="kpi__label">Heures travaillees</div>
-    <div class="kpi__value">{{ totals.hours_real | round(2) }} h</div>
+    <div class="kpi__label">Mensualisations contractuelles</div>
+    <div class="kpi__value">{{ totals.yearly_salary_theoretical | round(2) }} €</div>
   </div>
 </div>
 
-<div class="notice notice--warning">
-  Cette synthese agrege des indicateurs de suivi. Elle ne constitue pas un
-  recapitulatif de paie et ne doit pas etre recopiee telle quelle dans Pajemploi.
-</div>
-{% if not totals.absence_deduction_reliable %}
+{% if totals.months_complete < totals.months_expected %}
   <div class="notice notice--warning">
-    Au moins une deduction d'absence est incomplete: le planning contractuel est manquant ou incoherent.
-    <a href="/contracts/{{ contract_id }}/settings">Verifier le planning contractuel →</a>
+    Les totaux ci-dessous incluent uniquement les {{ totals.months_complete }} mois entièrement renseignés.
+    Les mois incomplets et futurs ne sont pas interprétés comme des mois à zéro.
+  </div>
+{% else %}
+  <div class="notice notice--ok">Tous les mois du contrat sur cette année sont finalisés.</div>
+{% endif %}
+{% if totals.months_schedule_missing %}
+  <div class="notice notice--warning">
+    {{ totals.months_schedule_missing }} mois ne peuvent pas être contrôlés car le planning contractuel manque.
+    <a href="/contracts/{{ contract_id }}/settings">Vérifier le contrat →</a>
   </div>
 {% endif %}
+{% if not totals.absence_deduction_reliable and totals.months_complete %}
+  <div class="notice notice--warning">Au moins une déduction d'absence d'un mois finalisé reste à vérifier.</div>
+{% endif %}
 {% if totals.majoration_rate_missing %}
-  <div class="notice notice--warning">Au moins une semaine comporte des heures majorees sans coefficient contractuel exploitable.</div>
+  <div class="notice notice--warning">Au moins un mois finalisé comporte des heures majorées sans coefficient exploitable.</div>
 {% endif %}
 
 <div class="summary-split">
   <div class="summary-section">
-    <div class="summary-title">Totaux annuels</div>
+    <div class="summary-title">Totaux des mois finalisés</div>
     <div class="summary-list">
       <div class="summary-row">
         <span class="label">Heures contractuelles</span>
         <span class="value">{{ totals.yearly_hours_theoretical | round(2) }} h</span>
       </div>
       <div class="summary-row">
-        <span class="label">Heures travaillees</span>
+        <span class="label">Heures saisies</span>
         <span class="value">{{ totals.hours_real | round(2) }} h</span>
       </div>
       <div class="summary-row">
-        <span class="label">Heures complementaires (semaine)</span>
-        <span class="value">{{ totals.hours_complementary | round(2) }} h</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Heures majorees au-dela de 45 h (semaine)</span>
-        <span class="value">{{ totals.hours_majorated | round(2) }} h</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Ecart heures</span>
+        <span class="label">Écart constaté</span>
         <span class="value">{{ totals.hours_delta | round(2) }} h</span>
       </div>
-      <div class="divider"></div>
       <div class="summary-row">
-        <span class="label">Jours travailles</span>
-        <span class="value">{{ totals.work_days }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Absences</span>
-        <span class="value">{{ totals.absence_days }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Conges assmat</span>
-        <span class="value">{{ totals.assmat_leave_days }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Sans solde</span>
-        <span class="value">{{ totals.unpaid_leave_days }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Jours feries</span>
-        <span class="value">{{ totals.holiday_days }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Conges payes (estimation non fiabilisee)</span>
-        <span class="value">{{ totals.paid_leave_days_annual }} j ({% if totals.paid_leave_mode == "complete" %}52 semaines{% else %}46 semaines ou moins{% endif %})</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Conges payes (pris / solde)</span>
-        <span class="value">{{ totals.paid_leave_days_taken }} j / {{ totals.paid_leave_days_balance }} j</span>
+        <span class="label">Complémentaires / majorées</span>
+        <span class="value">{{ totals.hours_complementary | round(2) }} h / {{ totals.hours_majorated | round(2) }} h</span>
       </div>
       <div class="divider"></div>
       <div class="summary-row">
-        <span class="label">Frais repas</span>
-        <span class="value">{{ totals.fee_meal_days }} j / {{ totals.fee_meal_total | round(2) }} €</span>
+        <span class="label">Jours travaillés / absences</span>
+        <span class="value">{{ totals.work_days }} / {{ totals.absence_days }}</span>
       </div>
       <div class="summary-row">
-        <span class="label">Frais entretien</span>
-        <span class="value">{{ totals.fee_maintenance_days }} j / {{ totals.fee_maintenance_total | round(2) }} €</span>
-      </div>
-      <div class="divider"></div>
-      <div class="summary-row">
-        <span class="label">Salaire mensualise contractuel</span>
-        <span class="value">{{ totals.yearly_salary_theoretical | round(2) }} €</span>
+        <span class="label">Congés assmat / sans solde</span>
+        <span class="value">{{ totals.assmat_leave_days }} / {{ totals.unpaid_leave_days }}</span>
       </div>
       <div class="summary-row">
-        <span class="label">Valeur des heures saisies au tarif net de base</span>
-        <span class="value">{{ totals.salary_base | round(2) }} €</span>
+        <span class="label">Repas / entretien</span>
+        <span class="value">{{ totals.fee_meal_total | round(2) }} € / {{ totals.fee_maintenance_total | round(2) }} €</span>
       </div>
-      <div class="summary-row">
-        <span class="label">Supplement de majoration hebdomadaire</span>
-        <span class="value">{{ totals.salary_majoration | round(2) }} €</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Deduction absence non remuneree{% if totals.absence_deduction_reliable %} (planning){% else %} (incomplete){% endif %}</span>
-        <span class="value">-{{ totals.unpaid_leave_deduction | round(2) }} €</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Repere de suivi (non declaratif)</span>
-        <span class="value highlight">{{ totals.total_estimated | round(2) }} €</span>
-      </div>
+    </div>
+
+    <div class="notice notice--neutral">
+      Le compteur fiable de congés payés sera intégré ici par période du 1er juin au 31 mai.
+      <a href="/contracts/{{ contract_id }}/paid-leave">Voir l'état du chantier →</a>
     </div>
   </div>
 
   <div class="summary-section">
-    <div class="summary-title">Detail par mois</div>
-    <div class="summary-table summary-table--annual">
+    <div class="summary-title">État de chaque mois</div>
+    <div class="summary-table summary-table--annual-status">
       <div class="summary-table__row summary-table__header">
         <span>Mois</span>
-        <span>Jours</span>
+        <span>État</span>
         <span>Heures</span>
         <span>Frais</span>
-        <span>Repere</span>
       </div>
       {% for item in monthly_items %}
         <div class="summary-table__row">
           <span>{{ item.label }}</span>
-          <span>{{ item.summary.work_days }}</span>
-          <span>{{ item.summary.hours_real | round(2) }} h</span>
-          <span>{{ (item.summary.fee_meal_total + item.summary.fee_maintenance_total) | round(2) }} €</span>
-          <span>{{ item.summary.total_estimated | round(2) }} €</span>
+          <span>
+            {% if not item.is_active %}
+              <span class="badge">Hors contrat</span>
+            {% elif item.summary.data_status == "complete" %}
+              <span class="badge badge--ok">Finalisé</span>
+            {% elif item.summary.data_status == "up_to_date" %}
+              <span class="badge badge--ok">À jour</span>
+            {% elif item.summary.data_status == "schedule_missing" %}
+              <span class="badge badge--warning">Planning manquant</span>
+            {% elif item.summary.data_status == "not_started" %}
+              <span class="badge">À venir</span>
+            {% else %}
+              <span class="badge badge--warning">{{ item.summary.missing_due_days }} jour(s) manquant(s)</span>
+            {% endif %}
+          </span>
+          {% if item.is_active and item.summary.data_status == "complete" %}
+            <span>{{ item.summary.hours_real | round(2) }} h</span>
+            <span>{{ (item.summary.fee_meal_total + item.summary.fee_maintenance_total) | round(2) }} €</span>
+          {% else %}
+            <span>—</span>
+            <span>—</span>
+          {% endif %}
         </div>
       {% endfor %}
     </div>

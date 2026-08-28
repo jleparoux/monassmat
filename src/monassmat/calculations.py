@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import date, time, timedelta
 from enum import Enum
 
 
@@ -23,6 +23,14 @@ class PaidLeaveMethod(str, Enum):
 class ContractYearMode(str, Enum):
     COMPLETE = "complete"
     INCOMPLETE = "incomplete"
+
+
+class MonthDataStatus(str, Enum):
+    SCHEDULE_MISSING = "schedule_missing"
+    NOT_STARTED = "not_started"
+    INCOMPLETE = "incomplete"
+    UP_TO_DATE = "up_to_date"
+    COMPLETE = "complete"
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,21 @@ class WorkdayFacts:
 class Period:
     start: date  # inclusive
     end: date    # inclusive
+
+
+@dataclass(frozen=True)
+class ScheduledDayFacts:
+    day: date
+    scheduled_hours: float | None
+
+
+@dataclass(frozen=True)
+class MonthCompleteness:
+    status: MonthDataStatus
+    expected_days: int | None
+    entered_days: int
+    missing_days: int | None
+    missing_due_days: int | None
 
 
 @dataclass(frozen=True)
@@ -75,6 +98,72 @@ def _round_positive_half_up(value: float) -> int:
     if value < 0:
         raise ValueError(f"value must be >= 0 (got {value})")
     return math.floor(value + 0.5)
+
+
+def evaluate_month_completeness(
+    scheduled_days: Iterable[ScheduledDayFacts],
+    *,
+    recorded_dates: Iterable[date],
+    as_of: date,
+) -> MonthCompleteness:
+    """Evaluate whether every contractually scheduled day is documented.
+
+    Unscheduled days do not need a calendar entry. A legacy schedule containing
+    unknown values makes the result unknown instead of assuming a Monday to
+    Friday week. Future scheduled days distinguish a month that is up to date
+    from a month that is fully documented.
+    """
+    items = tuple(scheduled_days)
+    if len({item.day for item in items}) != len(items):
+        raise ValueError("scheduled days must have unique dates")
+    if any(
+        item.scheduled_hours is not None and item.scheduled_hours < 0
+        for item in items
+    ):
+        raise ValueError("scheduled hours must be >= 0")
+
+    if any(item.scheduled_hours is None for item in items):
+        return MonthCompleteness(
+            status=MonthDataStatus.SCHEDULE_MISSING,
+            expected_days=None,
+            entered_days=0,
+            missing_days=None,
+            missing_due_days=None,
+        )
+    if not items:
+        return MonthCompleteness(
+            status=MonthDataStatus.NOT_STARTED,
+            expected_days=0,
+            entered_days=0,
+            missing_days=0,
+            missing_due_days=0,
+        )
+
+    expected_dates = {
+        item.day
+        for item in items
+        if item.scheduled_hours is not None and item.scheduled_hours > 0
+    }
+    entered_dates = expected_dates.intersection(recorded_dates)
+    missing_dates = expected_dates - entered_dates
+    missing_due_dates = {day for day in missing_dates if day <= as_of}
+
+    if not missing_dates:
+        status = MonthDataStatus.COMPLETE
+    elif expected_dates and all(day > as_of for day in expected_dates):
+        status = MonthDataStatus.NOT_STARTED
+    elif missing_due_dates:
+        status = MonthDataStatus.INCOMPLETE
+    else:
+        status = MonthDataStatus.UP_TO_DATE
+
+    return MonthCompleteness(
+        status=status,
+        expected_days=len(expected_dates),
+        entered_days=len(entered_dates),
+        missing_days=len(missing_dates),
+        missing_due_days=len(missing_due_dates),
+    )
 
 
 def prepare_pajemploi_declaration(
@@ -468,65 +557,109 @@ def absence_deduction_46_weeks(
     )
 
 
-# ---------------------------------------------------------------------------
-# Paid leave (V1 scaffold)
-# ---------------------------------------------------------------------------
-
-def paid_leave_acquired_days_v1(
-    workdays: Iterable[WorkdayFacts],
-    acquisition_period: Period,
-) -> float:
-    """
-    V1 heuristic scaffold:
-    - We compute number of 'worked days' (NORMAL) in the acquisition period
-    - Then apply a simple proportional rule.
-
-    IMPORTANT:
-    This is NOT a full legal implementation.
-    It is a placeholder until we codify the exact rules we want.
-    """
-    if acquisition_period.end < acquisition_period.start:
-        raise ValueError("acquisition_period.end must be >= acquisition_period.start")
-
-    worked_days = 0
-    for wd in workdays:
-        if acquisition_period.start <= wd.day <= acquisition_period.end and wd.kind == WorkdayKind.NORMAL:
-            worked_days += 1
-
-    # Placeholder: 2.5 days per 4 weeks approx -> 2.5 per 20 worked days rough proxy
-    # You will replace this once rules are specified precisely.
-    return (worked_days / 20.0) * 2.5
-
-
 def paid_leave_acquired_days(
     *,
-    mode: ContractYearMode,
-    weeks_worked: float | None = None,
-    extra_days: int = 0,
+    worked_weeks: int,
+    worked_days: int = 0,
+    scheduled_days_per_week: int | None = None,
 ) -> int:
+    """Return base rights from explicit work-equivalent weeks and days.
+
+    Rights accrue at 2.5 working days per four weeks of actual or equivalent
+    work. A remainder expressed in worked days uses the contractual number of
+    working days per week. The final result is rounded up and capped at the
+    statutory 30-day base entitlement. Supplementary rights are deliberately
+    calculated separately.
     """
-    Compute acquired paid leave days using explicit rules:
+    if worked_weeks < 0:
+        raise ValueError("worked_weeks must be >= 0")
+    if worked_days < 0:
+        raise ValueError("worked_days must be >= 0")
+    if worked_days and scheduled_days_per_week is None:
+        raise ValueError("scheduled_days_per_week is required with worked_days")
+    if scheduled_days_per_week is not None and not 1 <= scheduled_days_per_week <= 7:
+        raise ValueError("scheduled_days_per_week must be between 1 and 7")
 
-    - COMPLETE: 2.5 days per month x 12 months = 30 days.
-    - INCOMPLETE: (weeks_worked / 4) * 2.5, rounded up to the next whole day.
+    equivalent_weeks = float(worked_weeks)
+    if worked_days:
+        equivalent_weeks += worked_days / scheduled_days_per_week
+    return min(math.ceil(equivalent_weeks * 2.5 / 4.0), 30)
 
-    extra_days allows adding legally defined supplementary days (children, fractionnement, ...).
+
+def additional_child_paid_leave_days(
+    *,
+    base_days: int,
+    dependent_children: int,
+    employee_under_21: bool,
+) -> int:
+    """Return supplementary rights for dependent children.
+
+    For an employee aged 21 or over, total rights remain capped at 30 days.
+    For an employee under 21, each child adds two days, reduced to one when the
+    base entitlement does not exceed six days.
     """
-    if extra_days < 0:
-        raise ValueError("extra_days must be >= 0")
+    if not 0 <= base_days <= 30:
+        raise ValueError("base_days must be between 0 and 30")
+    if dependent_children < 0:
+        raise ValueError("dependent_children must be >= 0")
+    if employee_under_21:
+        days_per_child = 1 if base_days <= 6 else 2
+        return dependent_children * days_per_child
+    return min(dependent_children * 2, 30 - base_days)
 
-    if mode == ContractYearMode.COMPLETE:
-        return 30 + extra_days
 
-    if mode == ContractYearMode.INCOMPLETE:
-        if weeks_worked is None:
-            raise ValueError("weeks_worked is required for INCOMPLETE mode")
-        if weeks_worked < 0:
-            raise ValueError("weeks_worked must be >= 0")
-        acquired = (weeks_worked / 4.0) * 2.5
-        return int(math.ceil(acquired)) + extra_days
+def paid_leave_reference_period(day: date) -> Period:
+    """Return the June 1 to May 31 acquisition period containing ``day``."""
+    if day.month >= 6:
+        return Period(
+            start=date(day.year, 6, 1),
+            end=date(day.year + 1, 5, 31),
+        )
+    return Period(
+        start=date(day.year - 1, 6, 1),
+        end=date(day.year, 5, 31),
+    )
 
-    raise ValueError(f"Unknown mode: {mode}")
+
+def paid_leave_taken_dates(
+    *,
+    absence_start: date,
+    absence_end: date,
+    scheduled_weekdays: Iterable[int],
+    holidays: Iterable[date] = (),
+) -> tuple[date, ...]:
+    """Return the working days deducted for one paid-leave absence.
+
+    Counting starts on the first day in the absence where work was scheduled,
+    then includes every Monday-to-Saturday working day until the day before the
+    next scheduled return. Sundays and public holidays are excluded.
+    """
+    if absence_end < absence_start:
+        raise ValueError("absence_end must be >= absence_start")
+    weekdays = set(scheduled_weekdays)
+    if not weekdays or any(day < 0 or day > 6 for day in weekdays):
+        raise ValueError("scheduled_weekdays must contain values from 0 to 6")
+    holiday_dates = set(holidays)
+
+    first_day = absence_start
+    while first_day <= absence_end and (
+        first_day.weekday() not in weekdays or first_day in holiday_dates
+    ):
+        first_day += timedelta(days=1)
+    if first_day > absence_end:
+        return ()
+
+    return_day = absence_end + timedelta(days=1)
+    while return_day.weekday() not in weekdays:
+        return_day += timedelta(days=1)
+
+    result = []
+    current = first_day
+    while current < return_day:
+        if current.weekday() != 6 and current not in holiday_dates:
+            result.append(current)
+        current += timedelta(days=1)
+    return tuple(result)
 
 
 def paid_leave_value(

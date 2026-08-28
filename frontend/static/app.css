@@ -80,6 +80,7 @@ html[data-theme="dark"] .link { color: #93c5fd; }
 html[data-theme="dark"] .kpi__value { color: var(--text); }
 html[data-theme="dark"] .badge { background: #1e293b; border-color: #1f2937; }
 html[data-theme="dark"] .badge--ok { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.4); color: #6ee7b7; }
+html[data-theme="dark"] .badge--warning { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.45); color: #fcd34d; }
 html[data-theme="dark"] .kpi-card { background: linear-gradient(140deg, #111827, #1e1b4b); border-color: #1f2937; }
 html[data-theme="dark"] .kpi-value { color: var(--text); }
 html[data-theme="dark"] .kpi-meta { color: var(--muted); }
@@ -99,6 +100,7 @@ html[data-theme="dark"] .notice--warning {
   background: rgba(245,158,11,0.12);
   color: #fcd34d;
 }
+html[data-theme="dark"] .notice--neutral { background: #0b1220; border-color: #334155; color: var(--muted); }
 html[data-theme="dark"] .schedule-section { background: #0b1220; border-color: #1f2937; }
 html[data-theme="dark"] .schedule-total { border-color: #1f2937; }
 html[data-theme="dark"] .schedule-section.is-mismatch .schedule-total { color: #fcd34d; }
@@ -185,6 +187,7 @@ a { color: inherit; }
 
 /* KPIs dans les cartes contrat */
 .contract-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kpi__value--small { font-size: 14px; line-height: 1.25; }
 
 /* Grille d'actions 2×2 */
 .action-grid {
@@ -588,6 +591,11 @@ a { color: inherit; }
 .summary-table--annual .summary-table__row span:nth-child(3),
 .summary-table--annual .summary-table__row span:nth-child(4),
 .summary-table--annual .summary-table__row span:nth-child(5) { text-align: right; }
+.summary-table--annual-status .summary-table__row {
+  grid-template-columns: minmax(70px, 0.8fr) minmax(130px, 1.5fr) minmax(65px, 0.7fr) minmax(65px, 0.7fr);
+}
+.summary-table--annual-status .summary-table__row span:nth-child(3),
+.summary-table--annual-status .summary-table__row span:nth-child(4) { text-align: right; }
 .summary-nav { display: flex; align-items: center; gap: 8px; }
 .btn-small { padding: 4px 10px; font-size: 12px; }
 .page-actions { display: flex; gap: 10px; align-items: center; }
@@ -616,6 +624,11 @@ a { color: inherit; }
   border-color: rgba(34,197,94,0.4);
   background: rgba(34,197,94,0.12);
   color: #166534;
+}
+.badge--warning {
+  border-color: rgba(217,119,6,0.35);
+  background: rgba(245,158,11,0.12);
+  color: #92400e;
 }
 .dashboard-kpis {
   display: grid;
@@ -808,6 +821,11 @@ html[data-theme="dark"] .planned-week:has(input:not(:checked)) { background: rgb
   border-color: rgba(217,119,6,0.35);
   background: rgba(245,158,11,0.12);
   color: #92400e;
+}
+.notice--neutral {
+  border-color: var(--line);
+  background: var(--bg);
+  color: var(--muted);
 }
 
 .modal {

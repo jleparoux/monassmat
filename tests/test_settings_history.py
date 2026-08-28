@@ -301,6 +301,52 @@ def test_46_week_absence_counts_non_care_weeks_in_month_denominator():
     assert "jours habituels" in summary.absence_deduction_message
 
 
+def test_period_summary_reports_missing_scheduled_days():
+    contract = DummyContract(
+        start_date=date(2025, 1, 1),
+        end_date=None,
+        hours_per_week=40.0,
+        weeks_per_year=52.0,
+        hourly_rate=5.0,
+        days_per_week=5,
+        majoration_threshold=None,
+        majoration_rate=None,
+        fee_meal_amount=None,
+        fee_maintenance_amount=None,
+        salary_net_ceiling=None,
+        monday_hours=8.0,
+        tuesday_hours=8.0,
+        wednesday_hours=8.0,
+        thursday_hours=8.0,
+        friday_hours=8.0,
+        saturday_hours=0.0,
+        sunday_hours=0.0,
+    )
+    workdays = [
+        DummyWorkday(day, 8.0, WorkdayKind.NORMAL)
+        for day in (
+            date(2025, 1, 6),
+            date(2025, 1, 7),
+            date(2025, 1, 9),
+            date(2025, 1, 10),
+        )
+    ]
+
+    summary = summarize_period(
+        contract,
+        workdays,
+        [],
+        start=date(2025, 1, 6),
+        end=date(2025, 1, 10),
+        as_of=date(2025, 1, 10),
+    )
+
+    assert summary.data_status == "incomplete"
+    assert summary.expected_days == 5
+    assert summary.entered_days == 4
+    assert summary.missing_due_days == 1
+
+
 def test_weekly_hours_are_classified_across_workdays():
     contract = DummyContract(
         start_date=date(2025, 1, 1),

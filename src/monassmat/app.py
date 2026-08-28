@@ -18,18 +18,16 @@ from sqlalchemy.orm import Session
 from . import crud
 from .calculations import (
     ContractFacts,
-    PaidLeaveMethod,
-    Period,
+    MonthDataStatus,
+    ScheduledDayFacts,
     WorkdayFacts,
     absence_deduction_46_weeks,
     absence_deduction_52_weeks,
     allocate_weekly_hours,
     contract_monthly_hours,
     contract_monthly_salary,
+    evaluate_month_completeness,
     hours_between_times,
-    paid_leave_acquired_days,
-    paid_leave_acquired_days_v1,
-    paid_leave_value,
     parse_holidays_response,
     prepare_pajemploi_declaration,
     scheduled_hours_for_day,
@@ -326,6 +324,34 @@ def schedule_from_settings(settings: dict) -> tuple[float | None, ...]:
     return tuple(settings[field_name] for field_name in WEEKLY_SCHEDULE_FIELDS)
 
 
+def contract_month_completeness(
+    contract,
+    settings: list[dict],
+    workdays: list,
+    *,
+    start: date,
+    end: date,
+    as_of: date,
+):
+    scheduled_days = []
+    for day in iter_days(start, end):
+        if not contract_is_active_on(contract, day):
+            continue
+        current = settings_for_day(settings, day)
+        try:
+            hours = scheduled_hours_for_day(schedule_from_settings(current), day)
+        except ValueError:
+            hours = None
+        scheduled_days.append(
+            ScheduledDayFacts(day=day, scheduled_hours=hours)
+        )
+    return evaluate_month_completeness(
+        scheduled_days,
+        recorded_dates=(workday.date for workday in workdays),
+        as_of=as_of,
+    )
+
+
 def week_start(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
@@ -506,9 +532,19 @@ def summarize_period(
     *,
     start: date,
     end: date,
+    as_of: date | None = None,
 ) -> MonthlySummaryOut:
     settings = build_settings_timeline(contract, settings_snapshots)
     settings_index = 0
+
+    completeness = contract_month_completeness(
+        contract,
+        settings,
+        workdays,
+        start=start,
+        end=end,
+        as_of=as_of or date.today(),
+    )
 
     workdays_by_date = {wd.date: wd for wd in workdays}
     worked_hours_by_date = allocate_period_worked_hours(workdays, settings)
@@ -612,6 +648,11 @@ def summarize_period(
     return MonthlySummaryOut(
         period_start=start,
         period_end=end,
+        data_status=completeness.status.value,
+        expected_days=completeness.expected_days,
+        entered_days=completeness.entered_days,
+        missing_days=completeness.missing_days,
+        missing_due_days=completeness.missing_due_days,
         monthly_hours_theoretical=theo_hours,
         monthly_salary_theoretical=theo_salary,
         hours_real=real_hours,
@@ -637,10 +678,6 @@ def summarize_period(
         majoration_rate_missing=majoration_rate_missing,
         total_estimated=total_estimated,
         average_hours_per_day=average_hours,
-        paid_leave_days_annual=0,
-        paid_leave_mode="",
-        paid_leave_days_taken=0,
-        paid_leave_days_balance=0,
     )
 
 
@@ -665,23 +702,6 @@ def build_month_summary(contract_id: int, start: date, end: date) -> MonthlySumm
             start=start,
             end=end,
         )
-        paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
-        paid_leave_workdays = crud.list_workdays(db, contract_id, paid_leave_start, paid_leave_end)
-        settings = build_settings_timeline(contract, snapshots)
-        paid_leave_settings = settings_for_day(settings, paid_leave_start)
-        paid_leave_mode = CalcContractYearMode(paid_leave_settings["year_mode"].value)
-        paid_leave_days_annual = paid_leave_acquired_days(
-            mode=paid_leave_mode,
-            weeks_worked=paid_leave_settings["weeks_per_year"]
-            if paid_leave_mode == CalcContractYearMode.INCOMPLETE
-            else None,
-            extra_days=0,
-        )
-        paid_leave_days_taken = count_assmat_leave_days(paid_leave_workdays)
-        summary.paid_leave_days_annual = paid_leave_days_annual
-        summary.paid_leave_mode = paid_leave_settings["year_mode"].value
-        summary.paid_leave_days_taken = paid_leave_days_taken
-        summary.paid_leave_days_balance = paid_leave_days_annual - paid_leave_days_taken
         return summary
 
 
@@ -739,6 +759,15 @@ def build_pajemploi_preparation(contract_id: int, month: date) -> dict:
                 "etre complete avant de preparer la declaration; les saisies "
                 "du calendrier mensuel ne le remplacent pas."
             )
+            calculation_context_supported = False
+
+        if summary.data_status != MonthDataStatus.COMPLETE.value:
+            if summary.data_status != MonthDataStatus.SCHEDULE_MISSING.value:
+                missing_days = summary.missing_days or 0
+                blockers.append(
+                    f"Le calendrier du mois doit etre complete: {missing_days} "
+                    "journee(s) contractuelle(s) restent a renseigner."
+                )
             calculation_context_supported = False
 
         actual_activity_days: int | None = 0
@@ -921,20 +950,6 @@ def year_bounds(year: int) -> tuple[date, date]:
     return date(year, 1, 1), date(year, 12, 31)
 
 
-def paid_leave_year_bounds(day: date) -> tuple[date, date]:
-    if day.month >= 6:
-        start = date(day.year, 6, 1)
-        end = date(day.year + 1, 5, 31)
-        return start, end
-    start = date(day.year - 1, 6, 1)
-    end = date(day.year, 5, 31)
-    return start, end
-
-
-def count_assmat_leave_days(workdays: list) -> int:
-    return sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE)
-
-
 @app.get("/contracts/{contract_id}/summary/monthly", response_model=MonthlySummaryOut)
 def monthly_summary(contract_id: int, start: date | None = None, end: date | None = None):
     if start and end:
@@ -960,21 +975,15 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             workdays_end,
         )
         snapshots = crud.list_settings_snapshots(db, contract_id)
-        settings = build_settings_timeline(contract, snapshots)
-        paid_leave_start, paid_leave_end = paid_leave_year_bounds(start)
-        paid_leave_settings = settings_for_day(settings, paid_leave_start)
-        paid_leave_mode = CalcContractYearMode(paid_leave_settings["year_mode"].value)
-        paid_leave_days_annual = paid_leave_acquired_days(
-            mode=paid_leave_mode,
-            weeks_worked=paid_leave_settings["weeks_per_year"]
-            if paid_leave_mode == CalcContractYearMode.INCOMPLETE
-            else None,
-            extra_days=0,
-        )
-        paid_leave_workdays = crud.list_workdays(db, contract_id, paid_leave_start, paid_leave_end)
 
         monthly_items = []
         totals = {
+            "months_expected": 0,
+            "months_complete": 0,
+            "months_up_to_date": 0,
+            "months_incomplete": 0,
+            "months_not_started": 0,
+            "months_schedule_missing": 0,
             "hours_real": 0.0,
             "hours_normal": 0.0,
             "hours_complementary": 0.0,
@@ -997,10 +1006,6 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             "total_estimated": 0.0,
             "yearly_hours_theoretical": 0.0,
             "yearly_salary_theoretical": 0.0,
-            "paid_leave_days_annual": paid_leave_days_annual,
-            "paid_leave_mode": paid_leave_settings["year_mode"].value,
-            "paid_leave_days_taken": 0,
-            "paid_leave_days_balance": 0,
         }
 
         for month in range(1, 13):
@@ -1013,9 +1018,32 @@ def build_year_summary(contract_id: int, year: int) -> dict:
                 start=month_start,
                 end=month_end,
             )
-            monthly_items.append(
-                {"month": month, "label": MONTH_NAMES[month - 1], "summary": summary}
+            is_active = contract.start_date <= month_end and (
+                contract.end_date is None or contract.end_date >= month_start
             )
+            monthly_items.append(
+                {
+                    "month": month,
+                    "label": MONTH_NAMES[month - 1],
+                    "summary": summary,
+                    "is_active": is_active,
+                }
+            )
+
+            if not is_active:
+                continue
+            totals["months_expected"] += 1
+            status_key = {
+                MonthDataStatus.COMPLETE.value: "months_complete",
+                MonthDataStatus.UP_TO_DATE.value: "months_up_to_date",
+                MonthDataStatus.INCOMPLETE.value: "months_incomplete",
+                MonthDataStatus.NOT_STARTED.value: "months_not_started",
+                MonthDataStatus.SCHEDULE_MISSING.value: "months_schedule_missing",
+            }[summary.data_status]
+            totals[status_key] += 1
+
+            if summary.data_status != MonthDataStatus.COMPLETE.value:
+                continue
 
             totals["hours_real"] += summary.hours_real
             totals["hours_normal"] += summary.hours_normal
@@ -1046,11 +1074,6 @@ def build_year_summary(contract_id: int, year: int) -> dict:
             totals["yearly_hours_theoretical"] += summary.monthly_hours_theoretical
             totals["yearly_salary_theoretical"] += summary.monthly_salary_theoretical
 
-        totals["paid_leave_days_taken"] = count_assmat_leave_days(paid_leave_workdays)
-        totals["paid_leave_days_balance"] = (
-            totals["paid_leave_days_annual"] - totals["paid_leave_days_taken"]
-        )
-
         hours_delta = totals["hours_real"] - totals["yearly_hours_theoretical"]
         average_hours = totals["hours_real"] / totals["work_days"] if totals["work_days"] else 0.0
 
@@ -1079,8 +1102,11 @@ def export_monthly_csv(contract_id: int, start: date, end: date):
     writer.writerow(
         [
             "Période",
+            "État des données",
+            "Journées renseignées",
+            "Journées attendues",
             "Heures contractuelles",
-            "Heures réelles",
+            "Heures saisies",
             "Heures complémentaires",
             "Heures majorées",
             "Jours travaillés",
@@ -1088,17 +1114,16 @@ def export_monthly_csv(contract_id: int, start: date, end: date):
             "Jours congés assmat",
             "Jours sans solde",
             "Jours fériés",
-            "Salaire de base",
-            "Majoration",
             "Frais repas",
             "Frais entretien",
-            "Déduction sans solde",
-            "Total estimé",
         ]
     )
     writer.writerow(
         [
             f"{summary.period_start} → {summary.period_end}",
+            summary.data_status,
+            summary.entered_days,
+            summary.expected_days if summary.expected_days is not None else "",
             round(summary.monthly_hours_theoretical, 2),
             round(summary.hours_real, 2),
             round(summary.hours_complementary, 2),
@@ -1108,12 +1133,8 @@ def export_monthly_csv(contract_id: int, start: date, end: date):
             summary.assmat_leave_days,
             summary.unpaid_leave_days,
             summary.holiday_days,
-            round(summary.salary_base, 2),
-            round(summary.salary_majoration, 2),
             round(summary.fee_meal_total, 2),
             round(summary.fee_maintenance_total, 2),
-            round(summary.unpaid_leave_deduction, 2),
-            round(summary.total_estimated, 2),
         ]
     )
 
@@ -1197,6 +1218,7 @@ def export_yearly_csv(contract_id: int, year: int):
     writer.writerow(
         [
             "Mois",
+            "État des données",
             "Heures réelles",
             "Heures complémentaires",
             "Heures majorées",
@@ -1212,25 +1234,31 @@ def export_yearly_csv(contract_id: int, year: int):
     )
     for item in monthly_items:
         s = item["summary"]
+        is_complete = (
+            item["is_active"]
+            and s.data_status == MonthDataStatus.COMPLETE.value
+        )
         writer.writerow(
             [
                 item["label"],
-                round(s.hours_real, 2),
-                round(s.hours_complementary, 2),
-                round(s.hours_majorated, 2),
-                s.work_days,
-                s.absence_days,
-                round(s.salary_base, 2),
-                round(s.salary_majoration, 2),
-                round(s.fee_meal_total, 2),
-                round(s.fee_maintenance_total, 2),
-                round(s.unpaid_leave_deduction, 2),
-                round(s.total_estimated, 2),
+                s.data_status if item["is_active"] else "hors_contrat",
+                round(s.hours_real, 2) if is_complete else "",
+                round(s.hours_complementary, 2) if is_complete else "",
+                round(s.hours_majorated, 2) if is_complete else "",
+                s.work_days if is_complete else "",
+                s.absence_days if is_complete else "",
+                round(s.salary_base, 2) if is_complete else "",
+                round(s.salary_majoration, 2) if is_complete else "",
+                round(s.fee_meal_total, 2) if is_complete else "",
+                round(s.fee_maintenance_total, 2) if is_complete else "",
+                round(s.unpaid_leave_deduction, 2) if is_complete else "",
+                round(s.total_estimated, 2) if is_complete else "",
             ]
         )
     writer.writerow(
         [
             "TOTAL",
+            f"{totals['months_complete']} mois finalisés",
             round(totals["hours_real"], 2),
             round(totals["hours_complementary"], 2),
             round(totals["hours_majorated"], 2),
@@ -1304,14 +1332,6 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Contract not found")
     snapshots = crud.list_settings_snapshots(db, contract_id)
 
-    current_mode = CalcContractYearMode(contract.year_mode.value)
-    current_paid_leave_days = paid_leave_acquired_days(
-        mode=current_mode,
-        weeks_worked=contract.weeks_per_year
-        if current_mode == CalcContractYearMode.INCOMPLETE
-        else None,
-        extra_days=0,
-    )
     return templates.TemplateResponse(
         request,
         "contract_settings.html",
@@ -1325,7 +1345,6 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
             "today_year": date.today().year,
             "current_section": "settings",
             "year_modes": [m.value for m in ContractYearMode],
-            "paid_leave_days_annual": current_paid_leave_days,
         },
     )
 
@@ -1556,14 +1575,6 @@ def save_contract_settings(
     db.commit()
     snapshots = crud.list_settings_snapshots(db, contract_id)
 
-    current_mode = CalcContractYearMode(contract.year_mode.value)
-    current_paid_leave_days = paid_leave_acquired_days(
-        mode=current_mode,
-        weeks_worked=contract.weeks_per_year
-        if current_mode == CalcContractYearMode.INCOMPLETE
-        else None,
-        extra_days=0,
-    )
     return templates.TemplateResponse(
         request,
         "contract_settings.html",
@@ -1577,7 +1588,6 @@ def save_contract_settings(
             "today_year": date.today().year,
             "saved": True,
             "year_modes": [m.value for m in ContractYearMode],
-            "paid_leave_days_annual": current_paid_leave_days,
         },
     )
 
@@ -1597,13 +1607,6 @@ def edit_settings_snapshot(
     if not snapshot:
         raise HTTPException(status_code=404, detail="Snapshot not found")
 
-    paid_leave_days = paid_leave_acquired_days(
-        mode=CalcContractYearMode(snapshot.year_mode.value),
-        weeks_worked=snapshot.weeks_per_year
-        if snapshot.year_mode == ContractYearMode.INCOMPLETE
-        else None,
-        extra_days=0,
-    )
     return templates.TemplateResponse(
         request,
         "settings_snapshot_form.html",
@@ -1615,7 +1618,6 @@ def edit_settings_snapshot(
             "snapshot": snapshot,
             "current_section": "settings",
             "year_modes": [m.value for m in ContractYearMode],
-            "paid_leave_days_annual": paid_leave_days,
         },
     )
 
@@ -1723,13 +1725,6 @@ def save_settings_snapshot(
     db.commit()
 
     snapshot = crud.get_settings_snapshot(db, contract_id=contract_id, valid_from=valid_from_date)
-    paid_leave_days = paid_leave_acquired_days(
-        mode=CalcContractYearMode(snapshot.year_mode.value),
-        weeks_worked=snapshot.weeks_per_year
-        if snapshot.year_mode == ContractYearMode.INCOMPLETE
-        else None,
-        extra_days=0,
-    )
     return templates.TemplateResponse(
         request,
         "settings_snapshot_form.html",
@@ -1741,7 +1736,6 @@ def save_settings_snapshot(
             "snapshot": snapshot,
             "saved": True,
             "year_modes": [m.value for m in ContractYearMode],
-            "paid_leave_days_annual": paid_leave_days,
         },
     )
 
@@ -1764,14 +1758,6 @@ def delete_settings_snapshot(
     db.commit()
 
     snapshots = crud.list_settings_snapshots(db, contract_id)
-    current_mode = CalcContractYearMode(contract.year_mode.value)
-    current_paid_leave_days = paid_leave_acquired_days(
-        mode=current_mode,
-        weeks_worked=contract.weeks_per_year
-        if current_mode == CalcContractYearMode.INCOMPLETE
-        else None,
-        extra_days=0,
-    )
     return templates.TemplateResponse(
         request,
         "contract_settings.html",
@@ -1785,7 +1771,6 @@ def delete_settings_snapshot(
             "today_year": date.today().year,
             "deleted": True,
             "year_modes": [m.value for m in ContractYearMode],
-            "paid_leave_days_annual": current_paid_leave_days,
         },
     )
 
@@ -2001,45 +1986,6 @@ def paid_leave_page(
     target_year = year or date.today().year
     period_start, period_end = _paid_leave_year_bounds(date(target_year, 6, 1))
 
-    workdays = crud.list_workdays(db, contract_id, period_start, period_end)
-
-    # Days acquired: use v1 heuristic counting NORMAL workdays
-    wf_list = [
-        WorkdayFacts(day=wd.date, hours=wd.hours, kind=CalcWorkdayKind(wd.kind.value))
-        for wd in workdays
-    ]
-    acquisition_period = Period(start=period_start, end=period_end)
-    days_acquired = round(paid_leave_acquired_days_v1(wf_list, acquisition_period), 2)
-
-    # Days taken: count ASSMAT_LEAVE workdays
-    days_taken = sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE)
-
-    # Get applicable settings for amount computation
-    snapshots = crud.list_settings_snapshots(db, contract_id)
-    settings = build_settings_timeline(contract, snapshots)
-    # Use most recent snapshot valid for this period (or first)
-    applicable = settings[0]
-    for snap in settings:
-        if snap["valid_from"] <= period_start:
-            applicable = snap
-    daily_reference_hours = (
-        applicable["hours_per_week"] / applicable["days_per_week"]
-        if applicable.get("days_per_week") and applicable["days_per_week"] > 0
-        else applicable["hours_per_week"] / 5.0
-    )
-    hourly_rate = applicable["hourly_rate"]
-
-    amount_maintien = (
-        paid_leave_value(
-            method=PaidLeaveMethod.MAINTIEN,
-            days_taken=float(days_taken),
-            daily_reference_hours=daily_reference_hours,
-            hourly_rate=hourly_rate,
-        )
-        if days_taken > 0
-        else 0.0
-    )
-
     history = crud.list_paid_leaves(db, contract_id)
 
     return templates.TemplateResponse(
@@ -2051,10 +1997,6 @@ def paid_leave_page(
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "period_start": period_start,
             "period_end": period_end,
-            "paid_leave_mode": "Annuel (juin → mai)",
-            "days_acquired": days_acquired,
-            "days_taken": days_taken,
-            "amount_maintien": amount_maintien,
             "history": history,
             "saved": saved,
             "current_section": "paid-leave",
@@ -2140,52 +2082,6 @@ def delete_payment_route(
     return RedirectResponse(url=f"/contracts/{contract_id}/payments?deleted=1", status_code=303)
 
 
-@app.post("/contracts/{contract_id}/paid-leave/record", response_class=HTMLResponse)
-def record_paid_leave(
-    contract_id: int,
-    period_start: str = Form(...),
-    period_end: str = Form(...),
-    method: str = Form(...),
-    amount_paid: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    contract = crud.get_contract(db, contract_id)
-    if not contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
-
-    period_start_date = date_from_iso(period_start)
-    period_end_date = date_from_iso(period_end)
-
-    workdays = crud.list_workdays(db, contract_id, period_start_date, period_end_date)
-
-    wf_list = [
-        WorkdayFacts(day=wd.date, hours=wd.hours, kind=CalcWorkdayKind(wd.kind.value))
-        for wd in workdays
-    ]
-    acquisition_period = Period(start=period_start_date, end=period_end_date)
-    days_acquired = round(paid_leave_acquired_days_v1(wf_list, acquisition_period), 2)
-    days_taken = float(sum(1 for wd in workdays if wd.kind == WorkdayKind.ASSMAT_LEAVE))
-
-    paid_leave_method = PaidLeaveMethod(method)
-
-    crud.upsert_paid_leave(
-        db,
-        contract_id=contract_id,
-        period_start=period_start_date,
-        period_end=period_end_date,
-        days_acquired=days_acquired,
-        days_taken=days_taken,
-        method=paid_leave_method,
-        amount_paid=float(amount_paid),
-    )
-    db.commit()
-
-    return RedirectResponse(
-        url=f"/contracts/{contract_id}/paid-leave?saved=true",
-        status_code=302,
-    )
-
-
 @app.get("/children", response_class=HTMLResponse)
 def list_children_page(request: Request, db: Session = Depends(get_db)):
     children = crud.list_children(db)
@@ -2265,8 +2161,6 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
     month_start = today.replace(day=1)
     _, last_day = calendar.monthrange(today.year, today.month)
     month_end = today.replace(day=last_day)
-    days_expected = sum(1 for d in iter_days(month_start, month_end) if d.weekday() < 5)
-    cp_year_start, cp_year_end = _paid_leave_year_bounds(today)
 
     items = []
     for contract in contracts:
@@ -2280,18 +2174,51 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
         is_active = contract.end_date is None or contract.end_date >= today
 
         month_workdays = crud.list_workdays(db, contract.id, month_start, month_end)
-        days_entered = sum(1 for w in month_workdays if w.kind != WorkdayKind.HOLIDAY)
-
-        cp_workdays = crud.list_workdays(db, contract.id, cp_year_start, cp_year_end)
-        wf_list = [
-            WorkdayFacts(day=w.date, hours=w.hours, kind=CalcWorkdayKind(w.kind.value))
-            for w in cp_workdays
-        ]
-        cp_acquired = round(
-            paid_leave_acquired_days_v1(wf_list, Period(start=cp_year_start, end=cp_year_end)), 1
+        snapshots = crud.list_settings_snapshots(db, contract.id)
+        settings = build_settings_timeline(contract, snapshots)
+        completeness = contract_month_completeness(
+            contract,
+            settings,
+            month_workdays,
+            start=month_start,
+            end=month_end,
+            as_of=today,
         )
-        cp_taken = sum(1 for w in cp_workdays if w.kind == WorkdayKind.ASSMAT_LEAVE)
-        cp_balance = round(cp_acquired - cp_taken, 1)
+
+        status_details = {
+            MonthDataStatus.SCHEDULE_MISSING: {
+                "label": "Planning à compléter",
+                "tone": "warning",
+                "action_label": "Compléter le planning",
+                "action_href": f"/contracts/{contract.id}/settings",
+            },
+            MonthDataStatus.NOT_STARTED: {
+                "label": "Mois à venir",
+                "tone": "neutral",
+                "action_label": "Ouvrir le calendrier",
+                "action_href": f"/contracts/{contract.id}/calendar",
+            },
+            MonthDataStatus.INCOMPLETE: {
+                "label": f"{completeness.missing_due_days} jour(s) en retard",
+                "tone": "warning",
+                "action_label": "Completer le mois",
+                "action_href": f"/contracts/{contract.id}/calendar",
+            },
+            MonthDataStatus.UP_TO_DATE: {
+                "label": "À jour jusqu'à aujourd'hui",
+                "tone": "ok",
+                "action_label": "Continuer le suivi",
+                "action_href": f"/contracts/{contract.id}/calendar",
+            },
+            MonthDataStatus.COMPLETE: {
+                "label": "Mois complet",
+                "tone": "ok",
+                "action_label": "Préparer Pajemploi",
+                "action_href": (
+                    f"/contracts/{contract.id}/pajemploi?month={month_start.isoformat()}"
+                ),
+            },
+        }[completeness.status]
 
         items.append(
             {
@@ -2305,9 +2232,11 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
                 "hourly_rate": contract.hourly_rate,
                 "monthly_salary_theoretical": contract_monthly_salary(facts),
                 "is_active": is_active,
-                "days_entered": days_entered,
-                "days_expected": days_expected,
-                "cp_balance": cp_balance,
+                "days_entered": completeness.entered_days,
+                "days_expected": completeness.expected_days,
+                "missing_days": completeness.missing_days,
+                "data_status": completeness.status.value,
+                **status_details,
             }
         )
 

@@ -20,6 +20,11 @@ class WorkdayUpsertIn(BaseModel):
 class MonthlySummaryOut(BaseModel):
     period_start: date
     period_end: date
+    data_status: str
+    expected_days: int | None
+    entered_days: int
+    missing_days: int | None
+    missing_due_days: int | None
     monthly_hours_theoretical: float
     monthly_salary_theoretical: float
     hours_real: float
@@ -45,7 +50,3 @@ class MonthlySummaryOut(BaseModel):
     majoration_rate_missing: bool = False
     total_estimated: float = 0.0
     average_hours_per_day: float = 0.0
-    paid_leave_days_annual: int = 0
-    paid_leave_mode: str = ""
-    paid_leave_days_taken: int = 0
-    paid_leave_days_balance: int = 0

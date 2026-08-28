@@ -4,82 +4,66 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Congés payés</h1>
-    <p class="page-subtitle">Suivi des congés payés pour la période juin → mai.</p>
+    <p class="page-subtitle">Suivi par période d'acquisition du 1er juin au 31 mai.</p>
   </div>
   <div class="page-actions">
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/summary/year">Synthèse annuelle</a>
     <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/calendar">Calendrier</a>
   </div>
 </div>
 
-{% if saved %}
-  <div class="notice notice--ok">Enregistré.</div>
-{% endif %}
+<div class="notice notice--warning">
+  Le précédent compteur était une approximation fondée sur les seules journées saisies.
+  Il a été retiré pour éviter d'afficher un faux solde.
+</div>
 
 <section class="card">
   <div class="card__header">
-    <div class="title">Période {{ period_start }} → {{ period_end }}</div>
-    <div class="muted">Mode : {{ paid_leave_mode }}</div>
+    <div>
+      <div class="title">Période {{ period_start }} → {{ period_end }}</div>
+      <div class="muted">Calcul fiable en cours d'intégration</div>
+    </div>
+    <span class="badge badge--warning">Non calculé</span>
   </div>
   <div class="card__body">
     <div class="summary-list">
       <div class="summary-row">
-        <span class="label">Jours acquis</span>
-        <span class="value">{{ days_acquired }} j</span>
+        <span class="label">Droits acquis</span>
+        <span class="value">À calculer depuis l'historique</span>
       </div>
       <div class="summary-row">
-        <span class="label">Jours pris</span>
-        <span class="value">{{ days_taken }} j</span>
+        <span class="label">Congés pris</span>
+        <span class="value">À décompter en jours ouvrables</span>
+      </div>
+      <div class="summary-row">
+        <span class="label">Pris par anticipation / régularisés</span>
+        <span class="value">Faits historiques à enregistrer</span>
       </div>
       <div class="summary-row">
         <span class="label">Solde restant</span>
-        <span class="value highlight">{{ days_acquired - days_taken }} j</span>
-      </div>
-      <div class="divider"></div>
-      <div class="summary-row">
-        <span class="label">Montant estimé (maintien)</span>
-        <span class="value">{{ amount_maintien | round(2) }} €</span>
+        <span class="value">Non disponible tant que ces éléments manquent</span>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="card">
-  <div class="card__header">
-    <div class="title">Enregistrer un paiement de congés</div>
-  </div>
-  <div class="card__body">
-    <form method="post" action="/contracts/{{ contract_id }}/paid-leave/record">
-      <input type="hidden" name="period_start" value="{{ period_start }}" />
-      <input type="hidden" name="period_end" value="{{ period_end }}" />
-      <div class="field-group">
-        <label class="field">
-          <span>Méthode</span>
-          <select name="method">
-            <option value="maintien">Maintien du salaire</option>
-            <option value="dixieme">Dixième</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Montant payé (€)</span>
-          <input name="amount_paid" type="number" step="0.01" value="{{ amount_maintien | round(2) }}" required />
-        </label>
-      </div>
-      <div class="actions">
-        <button class="btn btn-primary" type="submit">Enregistrer</button>
-      </div>
-    </form>
+    <div class="notice notice--neutral">
+      La prochaine version calculera les droits par période, les jours ouvrables réellement consommés,
+      les droits supplémentaires et les régularisations, sans enregistrer de total dérivé.
+    </div>
   </div>
 </section>
 
 {% if history %}
 <section class="card">
-  <div class="card__header"><div class="title">Historique</div></div>
+  <div class="card__header"><div class="title">Paiements historiques déjà enregistrés</div></div>
   <div class="card__body">
+    <div class="notice notice--neutral">Ces montants sont conservés comme historique. Les anciens nombres de jours approximatifs ne sont plus affichés.</div>
     <div class="summary-list">
       {% for pl in history %}
       <div class="summary-row">
         <span class="label">{{ pl.period_start }} → {{ pl.period_end }}</span>
-        <span class="value">{{ pl.days_taken }} j / {{ pl.amount_paid | round(2) }} € ({{ pl.method.value }})</span>
+        <span class="value">
+          {% if pl.amount_paid is not none %}{{ pl.amount_paid | round(2) }} €{% else %}Montant non renseigné{% endif %}
+          · {{ pl.method.value }}
+        </span>
       </div>
       {% endfor %}
     </div>

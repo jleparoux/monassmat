@@ -15,6 +15,8 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
 - Planning contractuel: les heures prevues sont renseignees pour chacun des sept jours et leur total doit correspondre aux heures hebdomadaires. Les anciens contrats restent volontairement sans planning jusqu'a leur prochaine saisie: aucune valeur n'est inventee pendant la migration.
 - Semaines programmees: `/contracts/{id}/planned-weeks?year=YYYY`. Chaque semaine chevauchant l'annee est enregistree explicitement comme prevue ou non prevue; les annees historiques restent non configurees jusqu'a leur validation par l'utilisateur.
+- Completude mensuelle: seuls les jours prevus par le planning contractuel doivent etre renseignes. Un mois est distingue comme planning manquant, a completer, a jour jusqu'a aujourd'hui ou complet. La preparation Pajemploi reste bloquee tant que le mois n'est pas complet.
+- Synthese annuelle: les totaux agregent uniquement les mois complets. Les mois incomplets, futurs ou hors contrat ne sont jamais interpretes comme des mois reels a zero.
 
 ## Statut des calculs de remuneration
 
@@ -40,9 +42,22 @@ au recapitulatif. Conformement a l'article 111, les semaines de non-accueil et
 les jours feries chomes correspondant a un jour habituel restent comptes dans
 le denominateur mensuel; la programmation annuelle ne modifie donc pas ce
 calcul. L'interface signale tout planning contractuel manquant au lieu de
-produire une approximation. Le compteur de
-conges payes visible dans l'interface est une estimation historique non
-fiabilisee, notamment pour les periodes de reference partiellement travaillees.
+produire une approximation. L'ancien compteur de conges payes, fonde sur une
+heuristique de jours saisis, a ete retire des ecrans. Aucun solde n'est affiche
+tant que le nouveau compteur ne dispose pas des faits necessaires.
+
+Les fondations pures du futur compteur couvrent deja:
+- la periode d'acquisition du 1er juin au 31 mai;
+- l'acquisition de 2,5 jours ouvrables par equivalent de quatre semaines,
+  arrondie au jour superieur et plafonnee a 30 jours de base;
+- les jours supplementaires pour enfants a charge selon la tranche d'age;
+- le decompte des jours pris du premier jour normalement travaille jusqu'a la
+  veille de la reprise, hors dimanches et jours feries.
+
+La vue complete `acquis / pris / anticipes / regularises / restant` sera
+branchee apres ajout des faits historiques manquants. Les anciens paiements
+restent conserves, mais leurs nombres de jours derives ne sont plus presentes
+comme un solde fiable.
 
 Le taux net des heures complementaires est un fait contractuel explicite et
 historise. Les contrats existants ne sont pas completes automatiquement: le
