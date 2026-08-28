@@ -880,9 +880,126 @@ html[data-theme="dark"] .planned-week:has(input:not(:checked)) { background: rgb
 .declaration-form { align-items: end; display: grid; gap: 10px; grid-template-columns: minmax(150px, 1fr) auto; }
 .declaration-form .field { margin: 0; }
 
+.paid-leave-hero { border-color: rgba(37, 99, 235, 0.28); }
+.paid-leave-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.paid-leave-kpis .kpi { min-height: 108px; }
+.paid-leave-kpis .kpi__value { font-size: 24px; }
+.paid-leave-kpis .kpi--primary {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+.text-warning { color: #b45309 !important; }
+.paid-leave-empty {
+  align-items: flex-start;
+  background: var(--bg);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+}
+.paid-leave-empty span { color: var(--muted); font-size: 13px; }
+.paid-leave-details { margin: 16px 0; }
+.paid-leave-checks { display: grid; gap: 12px; }
+.check-line {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 32px 1fr;
+}
+.check-line > span {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+.check-line > div { display: grid; gap: 2px; }
+.check-line small { color: var(--muted); }
+.check-line.is-done > span { background: #16a34a; border-color: #16a34a; color: #fff; }
+.paid-leave-table { display: grid; gap: 0; }
+.paid-leave-table__row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1.6fr) minmax(130px, 1fr) minmax(100px, 0.7fr) auto;
+  padding: 11px 0;
+}
+.paid-leave-table__row > span { display: grid; gap: 4px; }
+.paid-leave-table__row small { color: var(--muted); }
+.paid-leave-table__header {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding-top: 0;
+  text-transform: uppercase;
+}
+.inline-editor {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-top: 16px;
+  padding: 13px 14px;
+}
+.inline-editor > summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+.inline-editor[open] > summary { margin-bottom: 10px; }
+.paid-leave-basis { margin-top: 16px; }
+.paid-leave-basis > summary { cursor: pointer; list-style: none; }
+.paid-leave-basis > summary::-webkit-details-marker { display: none; }
+.paid-leave-basis > summary > span:first-child { display: grid; gap: 3px; }
+.paid-leave-confirmation,
+.paid-leave-checkbox {
+  align-items: flex-start;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 10px 0;
+  padding: 11px 12px;
+}
+.paid-leave-confirmation input,
+.paid-leave-checkbox input { flex: 0 0 auto; margin-top: 2px; }
+.paid-leave-legal { margin: 16px 0 0; text-align: center; }
+.legacy-history { margin-top: 16px; }
+.paid-leave-year-list { display: grid; gap: 8px; margin-top: 10px; }
+.paid-leave-year-row {
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(150px, 1.4fr) minmax(90px, 0.8fr) minmax(150px, 1fr) auto;
+  padding: 10px 12px;
+}
+.paid-leave-year-row > span { display: grid; gap: 3px; }
+.paid-leave-year-row small { color: var(--muted); }
+
+html[data-theme="dark"] .paid-leave-kpis .kpi--primary { background: rgba(37, 99, 235, 0.16); }
+
 @media (max-width: 720px) {
   .workflow-steps { grid-template-columns: 1fr; }
   .declaration-form { align-items: stretch; grid-template-columns: 1fr; }
+  .paid-leave-kpis { grid-template-columns: 1fr; }
+  .paid-leave-table__header { display: none; }
+  .paid-leave-table__row { grid-template-columns: 1fr auto; }
+  .paid-leave-table__row > span:nth-child(2),
+  .paid-leave-table__row > span:nth-child(3) { grid-column: 1; }
+  .paid-leave-table__row > span:nth-child(4) { grid-column: 2; grid-row: 1; }
+  .paid-leave-year-row { grid-template-columns: 1fr auto; }
+  .paid-leave-year-row > span:nth-child(2),
+  .paid-leave-year-row > span:nth-child(3) { grid-column: 1; }
+  .paid-leave-year-row > a { grid-column: 2; grid-row: 1; }
 }
 
 .modal {

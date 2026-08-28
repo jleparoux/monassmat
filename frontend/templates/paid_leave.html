@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Congés payés</h1>
-    <p class="page-subtitle">Suivi par période d'acquisition du 1er juin au 31 mai.</p>
+    <p class="page-subtitle">Droits acquis et congés imputés, en jours ouvrables.</p>
   </div>
   <div class="page-actions">
     <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/summary/year">Synthèse annuelle</a>
@@ -12,63 +12,235 @@
   </div>
 </div>
 
-<div class="notice notice--warning">
-  Le précédent compteur était une approximation fondée sur les seules journées saisies.
-  Il a été retiré pour éviter d'afficher un faux solde.
+<div class="summary-nav">
+  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/paid-leave?year={{ previous_year }}">← Période précédente</a>
+  <strong>1er juin {{ period_start.year }} → 31 mai {{ period_end.year }}</strong>
+  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/paid-leave?year={{ next_year }}">Période suivante →</a>
+</div>
+
+{% if saved %}<div class="notice notice--ok">Base d'acquisition enregistrée et solde recalculé.</div>{% endif %}
+{% if absence_saved %}<div class="notice notice--ok">Période de congé enregistrée et solde recalculé.</div>{% endif %}
+{% if deleted %}<div class="notice notice--neutral">Période de congé supprimée.</div>{% endif %}
+
+<section class="card paid-leave-hero">
+  <div class="card__header">
+    <div>
+      <div class="title">Solde de la période</div>
+      <div class="muted">
+        {% if is_ongoing %}Droits en cours d'acquisition, calculés jusqu'au {{ calculated_through.strftime('%d/%m/%Y') }}{% else %}Période d'acquisition terminée{% endif %}
+      </div>
+    </div>
+    {% if status == "reliable" %}
+      <span class="badge badge--ok">Fiable</span>
+    {% elif status == "to_confirm" %}
+      <span class="badge badge--warning">À confirmer</span>
+    {% else %}
+      <span class="badge badge--warning">Données manquantes</span>
+    {% endif %}
+  </div>
+  <div class="card__body">
+    {% if balance %}
+      <div class="paid-leave-kpis">
+        <div class="kpi">
+          <div class="kpi__label">Droits acquis</div>
+          <div class="kpi__value">{% if status != "reliable" %}≈ {% endif %}{{ balance.total_acquired_days }} j</div>
+          <div class="muted">Base {{ balance.base_acquired_days }} + compléments {{ balance.child_days + balance.additional_days }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi__label">Congés imputés</div>
+          <div class="kpi__value">{{ balance.charged_days }} j</div>
+          <div class="muted">{{ balance.taken_days }} pris − {{ balance.regularized_days }} régularisés</div>
+        </div>
+        <div class="kpi kpi--primary">
+          <div class="kpi__label">Reste disponible</div>
+          <div class="kpi__value {% if balance.remaining_days < 0 %}text-warning{% endif %}">{% if status != "reliable" %}≈ {% endif %}{{ balance.remaining_days }} j</div>
+          {% if planned_charged_days %}<div class="muted">{{ remaining_after_planned }} j après les congés planifiés</div>{% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="empty-state paid-leave-empty">
+        <strong>Le solde ne peut pas encore être calculé.</strong>
+        <span>Complétez ou confirmez la base d'acquisition ci-dessous. Aucun droit n'est estimé silencieusement.</span>
+      </div>
+    {% endif %}
+
+    {% for item in basis_blockers %}<div class="notice notice--warning">{{ item }}</div>{% endfor %}
+    {% for item in leave_blockers %}<div class="notice notice--warning">{{ item }}</div>{% endfor %}
+    {% if balance and not history_confirmed %}
+      <div class="notice notice--warning">
+        Le calcul est disponible, mais reste indicatif tant que vous n'avez pas confirmé la base d'acquisition et la saisie de toutes les périodes de congé.
+      </div>
+    {% endif %}
+    {% if balance and balance.advance_days %}
+      <div class="notice notice--neutral">{{ balance.advance_days }} jour(s) ont été pris par anticipation sur cette période.</div>
+    {% endif %}
+    {% if balance and balance.remaining_days < 0 %}
+      <div class="notice notice--warning">Le solde est négatif : vérifiez l'imputation des congés anticipés et les éventuelles régularisations.</div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="summary-split paid-leave-details">
+  <section class="card">
+    <div class="card__header"><div class="title">Comment le solde est calculé</div></div>
+    <div class="card__body">
+      <div class="summary-list">
+        <div class="summary-row"><span class="label">Source d'acquisition</span><span class="value">{{ basis_label }}</span></div>
+        <div class="summary-row"><span class="label">Base de calcul</span><span class="value">{{ basis_details or "À compléter" }}</span></div>
+        {% if balance %}
+          <div class="summary-row"><span class="label">Droits de base</span><span class="value">{{ balance.base_acquired_days }} j</span></div>
+          <div class="summary-row"><span class="label">Enfants à charge</span><span class="value">+ {{ balance.child_days }} j</span></div>
+          <div class="summary-row"><span class="label">Autres droits justifiés</span><span class="value">+ {{ balance.additional_days }} j</span></div>
+          <div class="divider"></div>
+          <div class="summary-row"><span class="label">Congés pris</span><span class="value">− {{ balance.taken_days }} j</span></div>
+          <div class="summary-row"><span class="label">Régularisations</span><span class="value">+ {{ balance.regularized_days }} j</span></div>
+          <div class="summary-row"><span class="label">Solde</span><span class="value highlight">{{ balance.remaining_days }} j</span></div>
+        {% endif %}
+      </div>
+      <p class="hint">Les dimanches et jours fériés enregistrés ne sont pas décomptés. Le premier jour compté est le premier jour où l'assistante maternelle aurait normalement travaillé.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card__header"><div class="title">Ce qui reste à vérifier</div></div>
+    <div class="card__body paid-leave-checks">
+      <div class="check-line is-done"><span>1</span><div><strong>Enfants à charge</strong><small>{{ settings.dependent_children if settings else 0 }} renseigné(s)</small></div></div>
+      <div class="check-line {% if history_confirmed %}is-done{% endif %}"><span>2</span><div><strong>Historique complet</strong><small>{% if history_confirmed %}Base et congés confirmés{% elif basis_mode != 'auto' %}Base manuelle à confirmer{% else %}Calendrier à confirmer{% endif %}</small></div></div>
+      <div class="check-line {% if not leave_blockers %}is-done{% endif %}"><span>3</span><div><strong>Périodes de congés</strong><small>{{ absence_rows | length }} période(s) enregistrée(s)</small></div></div>
+    </div>
+  </section>
 </div>
 
 <section class="card">
   <div class="card__header">
     <div>
-      <div class="title">Période {{ period_start }} → {{ period_end }}</div>
-      <div class="muted">Calcul fiable en cours d'intégration</div>
+      <div class="title">Congés imputés sur cette période</div>
+      <div class="muted">Chaque période est décomptée en jours ouvrables selon le planning historique.</div>
     </div>
-    <span class="badge badge--warning">Non calculé</span>
   </div>
   <div class="card__body">
-    <div class="summary-list">
-      <div class="summary-row">
-        <span class="label">Droits acquis</span>
-        <span class="value">À calculer depuis l'historique</span>
+    {% if absence_rows %}
+      <div class="paid-leave-table">
+        <div class="paid-leave-table__row paid-leave-table__header"><span>Absence</span><span>Traitement</span><span>Décompte</span><span></span></div>
+        {% for row in absence_rows %}
+          <div class="paid-leave-table__row">
+            <span><strong>{{ row.absence_start.strftime('%d/%m/%Y') }} → {{ row.absence_end.strftime('%d/%m/%Y') }}</strong>{% if row.note %}<small>{{ row.note }}</small>{% endif %}</span>
+            <span>
+              {% if row.treatment == "acquired" %}<span class="badge badge--ok">Droits acquis</span>
+              {% elif row.treatment == "advance" %}<span class="badge badge--warning">Anticipation</span>
+              {% else %}<span class="badge">Sans solde</span>{% endif %}
+              {% if row.is_future %}<small>Planifié</small>{% endif %}
+            </span>
+            <span>
+              {% if row.days is not none %}<strong>{{ row.days }} j</strong>{% else %}<strong>Non calculable</strong>{% endif %}
+              {% if row.regularized_days %}<small>− {{ row.regularized_days }} j régularisés</small>{% endif %}
+            </span>
+            <span>
+              <form method="post" action="/contracts/{{ contract_id }}/paid-leave/absences/{{ row.id }}/delete">
+                <input type="hidden" name="reference_period_start" value="{{ period_start }}" />
+                <button class="btn btn-secondary btn-small" type="submit" title="Supprimer">×</button>
+              </form>
+            </span>
+          </div>
+        {% endfor %}
       </div>
-      <div class="summary-row">
-        <span class="label">Congés pris</span>
-        <span class="value">À décompter en jours ouvrables</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Pris par anticipation / régularisés</span>
-        <span class="value">Faits historiques à enregistrer</span>
-      </div>
-      <div class="summary-row">
-        <span class="label">Solde restant</span>
-        <span class="value">Non disponible tant que ces éléments manquent</span>
-      </div>
-    </div>
-    <div class="notice notice--neutral">
-      La prochaine version calculera les droits par période, les jours ouvrables réellement consommés,
-      les droits supplémentaires et les régularisations, sans enregistrer de total dérivé.
-    </div>
+    {% else %}
+      <div class="empty">Aucun congé n'est encore imputé sur cette période.</div>
+    {% endif %}
+
+    <details class="inline-editor" {% if not absence_rows %}open{% endif %}>
+      <summary>+ Ajouter une période de congé</summary>
+      <form method="post" action="/contracts/{{ contract_id }}/paid-leave/absences">
+        <input type="hidden" name="reference_period_start" value="{{ period_start }}" />
+        <div class="field-group">
+          <label class="field"><span>Premier jour d'absence</span><input name="absence_start" type="date" required /></label>
+          <label class="field"><span>Dernier jour d'absence</span><input name="absence_end" type="date" required /></label>
+        </div>
+        <label class="field">
+          <span>Imputation</span>
+          <select name="treatment" required>
+            <option value="acquired">Congé payé sur droits acquis</option>
+            <option value="advance">Congé payé pris par anticipation</option>
+            <option value="unpaid">Congé sans solde — ne consomme pas de droits</option>
+          </select>
+        </label>
+        <div class="field-group">
+          <label class="field"><span>Jours régularisés ensuite</span><input name="regularized_days" type="number" min="0" step="1" value="0" /></label>
+          <label class="field"><span>Note / justificatif</span><input name="note" maxlength="500" placeholder="Ex. régularisation sur salaire de mai" /></label>
+        </div>
+        <p class="hint">Une régularisation transforme les jours concernés en absence non rémunérée : ils ne sont plus déduits du solde.</p>
+        <div class="actions"><button class="btn btn-primary" type="submit">Enregistrer le congé</button></div>
+      </form>
+    </details>
   </div>
 </section>
 
-{% if history %}
-<section class="card">
-  <div class="card__header"><div class="title">Paiements historiques déjà enregistrés</div></div>
+<details class="card paid-leave-basis" {% if not balance or status != 'reliable' %}open{% endif %}>
+  <summary class="card__header">
+    <span><span class="title">Base d'acquisition et droits supplémentaires</span><span class="muted">Automatique si l'historique est complet, manuelle si vous disposez d'un décompte vérifié.</span></span>
+    <span class="btn btn-secondary btn-small">Configurer</span>
+  </summary>
   <div class="card__body">
-    <div class="notice notice--neutral">Ces montants sont conservés comme historique. Les anciens nombres de jours approximatifs ne sont plus affichés.</div>
+    <form method="post" action="/contracts/{{ contract_id }}/paid-leave/settings" id="paidLeaveBasisForm">
+      <input type="hidden" name="period_start" value="{{ period_start }}" />
+      <label class="field">
+        <span>Source des droits de base</span>
+        <select name="basis_mode" id="paidLeaveBasisMode">
+          <option value="auto" {% if basis_mode == "auto" %}selected{% endif %}>Calcul automatique depuis l'application</option>
+          <option value="months" {% if basis_mode == "months" %}selected{% endif %}>Nombre de mois complets vérifié</option>
+          <option value="weeks" {% if basis_mode == "weeks" %}selected{% endif %}>Nombre de semaines et jours vérifié</option>
+        </select>
+      </label>
+
+      <div data-basis-fields="auto">
+        <p class="hint">En cas de maladie non professionnelle, suspension du contrat ou historique incomplet, utilisez une base manuelle vérifiée.</p>
+      </div>
+
+      <div data-basis-fields="months" class="field-group">
+        <label class="field"><span>Mois complets travaillés ou assimilés</span><input name="worked_months" type="number" min="0" max="12" value="{{ settings.worked_months if settings and settings.worked_months is not none else '' }}" /></label>
+      </div>
+
+      <div data-basis-fields="weeks" class="field-group">
+        <label class="field"><span>Semaines travaillées ou assimilées</span><input name="worked_weeks" type="number" min="0" step="1" value="{{ settings.worked_weeks if settings and settings.worked_weeks is not none else '' }}" /></label>
+        <label class="field"><span>Jours supplémentaires</span><input name="worked_days" type="number" min="0" step="1" value="{{ settings.worked_days if settings else 0 }}" /></label>
+        <label class="field"><span>Jours habituels par semaine</span><input name="scheduled_days_per_week" type="number" min="1" max="7" step="1" value="{{ settings.scheduled_days_per_week if settings and settings.scheduled_days_per_week is not none else '' }}" /></label>
+      </div>
+
+      <label class="checkbox paid-leave-confirmation">
+        <input name="history_confirmed" type="checkbox" {% if history_confirmed %}checked{% endif %} />
+        <span>Je confirme que la base d'acquisition et toutes les périodes de congé imputées sur ces droits sont complètes.</span>
+      </label>
+
+      <div class="divider"></div>
+      <div class="field-group">
+        <label class="field"><span>Enfants à charge de moins de 15 ans au 30 avril</span><input name="dependent_children" type="number" min="0" step="1" value="{{ settings.dependent_children if settings else 0 }}" /></label>
+        <label class="checkbox paid-leave-checkbox"><input name="employee_under_21" type="checkbox" {% if settings and settings.employee_under_21 %}checked{% endif %} /><span>Assistante maternelle âgée de moins de 21 ans au 30 avril de l'année précédente</span></label>
+      </div>
+      <div class="field-group">
+        <label class="field"><span>Autres jours supplémentaires</span><input name="additional_days" type="number" min="0" step="1" value="{{ settings.additional_days if settings else 0 }}" /></label>
+        <label class="field"><span>Motif obligatoire si supérieur à 0</span><input name="additional_days_reason" maxlength="240" value="{{ settings.additional_days_reason if settings and settings.additional_days_reason else '' }}" placeholder="Ex. fractionnement validé" /></label>
+      </div>
+      <label class="field"><span>Note</span><input name="note" maxlength="500" value="{{ settings.note if settings and settings.note else '' }}" placeholder="Source du décompte manuel, accord écrit…" /></label>
+      <div class="actions"><button class="btn btn-primary" type="submit">Enregistrer et recalculer</button></div>
+    </form>
+  </div>
+</details>
+
+{% if history %}
+<details class="card legacy-history">
+  <summary class="card__header"><span class="title">Anciens montants conservés</span><span class="badge">Historique</span></summary>
+  <div class="card__body">
+    <div class="notice notice--neutral">Les anciens nombres de jours approximatifs ne sont pas réutilisés. Seuls les montants historiques restent visibles.</div>
     <div class="summary-list">
       {% for pl in history %}
-      <div class="summary-row">
-        <span class="label">{{ pl.period_start }} → {{ pl.period_end }}</span>
-        <span class="value">
-          {% if pl.amount_paid is not none %}{{ pl.amount_paid | round(2) }} €{% else %}Montant non renseigné{% endif %}
-          · {{ pl.method.value }}
-        </span>
-      </div>
+      <div class="summary-row"><span class="label">{{ pl.period_start }} → {{ pl.period_end }}</span><span class="value">{% if pl.amount_paid is not none %}{{ pl.amount_paid | round(2) }} €{% else %}Montant non renseigné{% endif %} · {{ pl.method.value }}</span></div>
       {% endfor %}
     </div>
   </div>
-</section>
+</details>
 {% endif %}
 
+<p class="hint paid-leave-legal">Aide au suivi fondée sur la convention collective et les règles Urssaf en vigueur. En cas de maladie, fractionnement complexe ou désaccord, vérifiez le décompte avec Pajemploi ou un professionnel.</p>
+
 {% endblock %}
+{% block scripts %}<script src="/static/paid_leave.js?v=20260828-1"></script>{% endblock %}

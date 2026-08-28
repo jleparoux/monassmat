@@ -98,6 +98,19 @@ class PajemploiPreparation:
     blockers: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class PaidLeaveBalance:
+    base_acquired_days: int
+    child_days: int
+    additional_days: int
+    total_acquired_days: int
+    taken_days: int
+    advance_days: int
+    regularized_days: int
+    charged_days: int
+    remaining_days: int
+
+
 def _assert_positive(name: str, value: float) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be > 0 (got {value})")
@@ -588,7 +601,7 @@ def absence_deduction_46_weeks(
 
 def paid_leave_acquired_days(
     *,
-    worked_weeks: int,
+    worked_weeks: float,
     worked_days: int = 0,
     scheduled_days_per_week: int | None = None,
 ) -> int:
@@ -612,7 +625,31 @@ def paid_leave_acquired_days(
     equivalent_weeks = float(worked_weeks)
     if worked_days:
         equivalent_weeks += worked_days / scheduled_days_per_week
-    return min(math.ceil(equivalent_weeks * 2.5 / 4.0), 30)
+    return min(math.ceil(equivalent_weeks * 2.5 / 4.0 - 1e-9), 30)
+
+
+def paid_leave_acquired_days_from_months(*, worked_months: int) -> int:
+    """Return base rights for complete calendar months worked or assimilated."""
+    if not 0 <= worked_months <= 12:
+        raise ValueError("worked_months must be between 0 and 12")
+    return min(math.ceil(worked_months * 2.5), 30)
+
+
+def paid_leave_equivalent_weeks(
+    work_equivalent_dates: Iterable[date],
+    *,
+    scheduled_weekdays: Iterable[int],
+) -> float:
+    """Convert explicit worked or assimilated scheduled days into weeks."""
+    dates = tuple(work_equivalent_dates)
+    if len(set(dates)) != len(dates):
+        raise ValueError("work_equivalent_dates must be unique")
+    weekdays = set(scheduled_weekdays)
+    if not weekdays or any(day < 0 or day > 6 for day in weekdays):
+        raise ValueError("scheduled_weekdays must contain values from 0 to 6")
+    if any(day.weekday() not in weekdays for day in dates):
+        raise ValueError("work-equivalent dates must be scheduled weekdays")
+    return len(dates) / len(weekdays)
 
 
 def additional_child_paid_leave_days(
@@ -635,6 +672,46 @@ def additional_child_paid_leave_days(
         days_per_child = 1 if base_days <= 6 else 2
         return dependent_children * days_per_child
     return min(dependent_children * 2, 30 - base_days)
+
+
+def calculate_paid_leave_balance(
+    *,
+    base_acquired_days: int,
+    dependent_children: int,
+    employee_under_21: bool,
+    additional_days: int,
+    taken_days: int,
+    advance_days: int,
+    regularized_days: int,
+) -> PaidLeaveBalance:
+    """Calculate a period balance from acquisition and explicit usage facts."""
+    if additional_days < 0:
+        raise ValueError("additional_days must be >= 0")
+    if taken_days < 0:
+        raise ValueError("taken_days must be >= 0")
+    if advance_days < 0 or advance_days > taken_days:
+        raise ValueError("advance_days must be between 0 and taken_days")
+    if regularized_days < 0 or regularized_days > taken_days:
+        raise ValueError("regularized_days must be between 0 and taken_days")
+
+    child_days = additional_child_paid_leave_days(
+        base_days=base_acquired_days,
+        dependent_children=dependent_children,
+        employee_under_21=employee_under_21,
+    )
+    total_acquired = base_acquired_days + child_days + additional_days
+    charged_days = taken_days - regularized_days
+    return PaidLeaveBalance(
+        base_acquired_days=base_acquired_days,
+        child_days=child_days,
+        additional_days=additional_days,
+        total_acquired_days=total_acquired,
+        taken_days=taken_days,
+        advance_days=advance_days,
+        regularized_days=regularized_days,
+        charged_days=charged_days,
+        remaining_days=total_acquired - charged_days,
+    )
 
 
 def paid_leave_reference_period(day: date) -> Period:

@@ -16,6 +16,7 @@ from monassmat.calculations import (
     absence_deduction_52_weeks,
     additional_child_paid_leave_days,
     allocate_weekly_hours,
+    calculate_paid_leave_balance,
     classify_weekly_hours,
     contract_monthly_hours,
     contract_monthly_salary,
@@ -23,6 +24,8 @@ from monassmat.calculations import (
     hours_in_period,
     monthly_workflow_status,
     paid_leave_acquired_days,
+    paid_leave_acquired_days_from_months,
+    paid_leave_equivalent_weeks,
     paid_leave_reference_period,
     paid_leave_taken_dates,
     paid_leave_value,
@@ -530,6 +533,26 @@ def test_paid_leave_acquired_days_includes_partial_worked_week():
     assert acquired == 26
 
 
+def test_paid_leave_acquired_days_from_complete_months_rounds_up():
+    assert paid_leave_acquired_days_from_months(worked_months=9) == 23
+
+
+def test_paid_leave_equivalent_weeks_uses_contractual_working_days():
+    equivalent = paid_leave_equivalent_weeks(
+        [
+            date(2026, 6, 1),
+            date(2026, 6, 2),
+            date(2026, 6, 4),
+            date(2026, 6, 5),
+            date(2026, 6, 8),
+            date(2026, 6, 9),
+        ],
+        scheduled_weekdays={0, 1, 3, 4},
+    )
+
+    assert equivalent == pytest.approx(1.5)
+
+
 def test_additional_child_days_are_capped_for_employee_21_or_over():
     assert additional_child_paid_leave_days(
         base_days=27,
@@ -544,6 +567,23 @@ def test_additional_child_days_for_employee_under_21_can_exceed_30():
         dependent_children=2,
         employee_under_21=True,
     ) == 4
+
+
+def test_paid_leave_balance_shows_advance_and_regularization():
+    balance = calculate_paid_leave_balance(
+        base_acquired_days=23,
+        dependent_children=2,
+        employee_under_21=False,
+        additional_days=0,
+        taken_days=25,
+        advance_days=10,
+        regularized_days=10,
+    )
+
+    assert balance.child_days == 4
+    assert balance.total_acquired_days == 27
+    assert balance.charged_days == 15
+    assert balance.remaining_days == 12
 
 
 def test_paid_leave_reference_period_runs_from_june_to_may():

@@ -73,9 +73,34 @@
       </div>
     </div>
 
-    <div class="notice notice--neutral">
-      Le compteur fiable de congés payés sera intégré ici par période du 1er juin au 31 mai.
-      <a href="/contracts/{{ contract_id }}/paid-leave">Voir l'état du chantier →</a>
+    <div>
+      <div class="summary-title">Congés payés</div>
+      <div class="muted">Les deux périodes d'acquisition qui croisent l'année {{ year }}.</div>
+      <div class="paid-leave-year-list">
+        {% for period in paid_leave_periods %}
+          <div class="paid-leave-year-row">
+            <span>
+              <strong>01/06/{{ period.period_start.year }} → 31/05/{{ period.period_end.year }}</strong>
+              {% if period.status == "reliable" %}<small>Décompte fiable</small>{% elif period.balance %}<small>Décompte à confirmer</small>{% else %}<small>Données à compléter</small>{% endif %}
+            </span>
+            <span>
+              {% if period.status == "reliable" %}<span class="badge badge--ok">Fiable</span>{% elif period.status == "to_confirm" %}<span class="badge badge--warning">À confirmer</span>{% else %}<span class="badge badge--warning">Incomplet</span>{% endif %}
+            </span>
+            <span>
+              {% if period.balance %}
+                <strong>{{ period.balance.remaining_days }} j restants</strong>
+                <small>{{ period.balance.total_acquired_days }} acquis · {{ period.balance.charged_days }} imputés{% if period.planned_charged_days %} · {{ period.remaining_after_planned }} après congés planifiés{% endif %}</small>
+              {% else %}
+                <strong>Solde indisponible</strong>
+                <small>Aucune estimation silencieuse</small>
+              {% endif %}
+            </span>
+            <a class="link" href="/contracts/{{ contract_id }}/paid-leave?year={{ period.period_start.year }}">Ouvrir →</a>
+          </div>
+        {% else %}
+          <div class="notice notice--neutral">Aucune période de congés payés ne croise cette année du contrat.</div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 

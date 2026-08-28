@@ -13,7 +13,11 @@ from .models import (
     ContractYearMode,
     MonthlyDeclaration,
     PaidLeave,
+    PaidLeaveAbsence,
+    PaidLeaveBasisMode,
     PaidLeaveMethod,
+    PaidLeavePeriodSettings,
+    PaidLeaveTreatment,
     Payment,
     PaymentKind,
     Workday,
@@ -324,6 +328,111 @@ def upsert_paid_leave(
     )
     db.add(pl)
     return pl
+
+
+def get_paid_leave_period_settings(
+    db: Session,
+    *,
+    contract_id: int,
+    period_start: date,
+) -> PaidLeavePeriodSettings | None:
+    stmt = select(PaidLeavePeriodSettings).where(
+        PaidLeavePeriodSettings.contract_id == contract_id,
+        PaidLeavePeriodSettings.period_start == period_start,
+    )
+    return db.scalar(stmt)
+
+
+def upsert_paid_leave_period_settings(
+    db: Session,
+    *,
+    contract_id: int,
+    period_start: date,
+    basis_mode: PaidLeaveBasisMode,
+    worked_months: int | None,
+    worked_weeks: int | None,
+    worked_days: int,
+    scheduled_days_per_week: int | None,
+    dependent_children: int,
+    employee_under_21: bool,
+    history_confirmed: bool,
+    additional_days: int,
+    additional_days_reason: str | None,
+    note: str | None,
+) -> PaidLeavePeriodSettings:
+    settings = get_paid_leave_period_settings(
+        db,
+        contract_id=contract_id,
+        period_start=period_start,
+    )
+    if settings is None:
+        settings = PaidLeavePeriodSettings(
+            contract_id=contract_id,
+            period_start=period_start,
+        )
+        db.add(settings)
+
+    settings.basis_mode = basis_mode
+    settings.worked_months = worked_months
+    settings.worked_weeks = worked_weeks
+    settings.worked_days = worked_days
+    settings.scheduled_days_per_week = scheduled_days_per_week
+    settings.dependent_children = dependent_children
+    settings.employee_under_21 = employee_under_21
+    settings.history_confirmed = history_confirmed
+    settings.additional_days = additional_days
+    settings.additional_days_reason = additional_days_reason
+    settings.note = note
+    return settings
+
+
+def list_paid_leave_absences(
+    db: Session,
+    contract_id: int,
+) -> list[PaidLeaveAbsence]:
+    stmt = (
+        select(PaidLeaveAbsence)
+        .where(PaidLeaveAbsence.contract_id == contract_id)
+        .order_by(PaidLeaveAbsence.absence_start.asc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def create_paid_leave_absence(
+    db: Session,
+    *,
+    contract_id: int,
+    reference_period_start: date,
+    absence_start: date,
+    absence_end: date,
+    treatment: PaidLeaveTreatment,
+    regularized_days: int,
+    note: str | None,
+) -> PaidLeaveAbsence:
+    absence = PaidLeaveAbsence(
+        contract_id=contract_id,
+        reference_period_start=reference_period_start,
+        absence_start=absence_start,
+        absence_end=absence_end,
+        treatment=treatment,
+        regularized_days=regularized_days,
+        note=note,
+    )
+    db.add(absence)
+    return absence
+
+
+def delete_paid_leave_absence(
+    db: Session,
+    *,
+    contract_id: int,
+    absence_id: int,
+) -> bool:
+    absence = db.get(PaidLeaveAbsence, absence_id)
+    if absence is None or absence.contract_id != contract_id:
+        return False
+    db.delete(absence)
+    return True
 
 
 def list_payments(db: Session, contract_id: int) -> list[Payment]:

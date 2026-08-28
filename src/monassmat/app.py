@@ -25,11 +25,16 @@ from .calculations import (
     absence_deduction_46_weeks,
     absence_deduction_52_weeks,
     allocate_weekly_hours,
+    calculate_paid_leave_balance,
     contract_monthly_hours,
     contract_monthly_salary,
     evaluate_month_completeness,
     hours_between_times,
     monthly_workflow_status,
+    paid_leave_acquired_days,
+    paid_leave_acquired_days_from_months,
+    paid_leave_equivalent_weeks,
+    paid_leave_taken_dates,
     parse_holidays_response,
     prepare_pajemploi_declaration,
     scheduled_hours_for_day,
@@ -43,7 +48,14 @@ from .calculations import (
 )
 from .calculations import WorkdayKind as CalcWorkdayKind
 from .db import get_db, session_scope
-from .models import Contract, ContractYearMode, PaymentKind, WorkdayKind
+from .models import (
+    Contract,
+    ContractYearMode,
+    PaidLeaveBasisMode,
+    PaidLeaveTreatment,
+    PaymentKind,
+    WorkdayKind,
+)
 from .schemas import MonthlySummaryOut, WorkdayUpsertIn
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # .../monassmat/
@@ -2030,13 +2042,23 @@ def year_summary(
     contract_id: int,
     request: Request,
     year: int | None = None,
+    db: Session = Depends(get_db),
 ):
     target_year = year or date.today().year
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
     summary = build_year_summary(contract_id, target_year)
     return templates.TemplateResponse(
         request,
         "partials/year_summary.html",
         {
+            "contract_id": contract_id,
+            "paid_leave_periods": build_paid_leave_year_rows(
+                db,
+                contract=contract,
+                calendar_year=target_year,
+            ),
             **summary,
         },
     )
@@ -2047,13 +2069,12 @@ def year_summary_page(
     contract_id: int,
     request: Request,
     year: int | None = None,
+    db: Session = Depends(get_db),
 ):
     target_year = year or date.today().year
-    with session_scope() as db:
-        contract = crud.get_contract(db, contract_id)
-        if not contract:
-            raise HTTPException(status_code=404, detail="Contract not found")
-        contract_name = contract.name
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
     summary = build_year_summary(contract_id, target_year)
     return templates.TemplateResponse(
         request,
@@ -2061,10 +2082,15 @@ def year_summary_page(
         {
             "title": "Synthese annuelle",
             "contract_id": contract_id,
-            "contract_name": contract_name,
+            "contract_name": contract.name,
             "prev_year": target_year - 1,
             "next_year": target_year + 1,
             "current_section": "year",
+            "paid_leave_periods": build_paid_leave_year_rows(
+                db,
+                contract=contract,
+                calendar_year=target_year,
+            ),
             **summary,
         },
     )
@@ -2081,12 +2107,502 @@ def _paid_leave_year_bounds(ref_date: date) -> tuple[date, date]:
     return start, end
 
 
+def _paid_leave_schedule_signature(settings: dict) -> tuple:
+    return settings["year_mode"], tuple(schedule_from_settings(settings))
+
+
+def _automatic_paid_leave_acquisition(
+    db: Session,
+    *,
+    contract: Contract,
+    period_start: date,
+    period_end: date,
+    absences: list,
+) -> dict:
+    active_start = max(period_start, contract.start_date)
+    active_end = min(
+        period_end,
+        contract.end_date or period_end,
+        date.today(),
+    )
+    if active_end < active_start:
+        return {
+            "base_days": 0,
+            "method": "future",
+            "worked_months": 0,
+            "equivalent_weeks": 0.0,
+            "scheduled_days_per_week": None,
+            "blockers": [],
+        }
+
+    snapshots = crud.list_settings_snapshots(db, contract.id)
+    timeline = build_settings_timeline(contract, snapshots)
+    initial = settings_for_day(timeline, active_start)
+    schedule = schedule_from_settings(initial)
+    try:
+        schedule_total = weekly_schedule_total(schedule)
+    except ValueError:
+        schedule_total = None
+    if schedule_total is None or schedule_total <= 0:
+        return {
+            "base_days": None,
+            "method": "auto",
+            "worked_months": None,
+            "equivalent_weeks": None,
+            "scheduled_days_per_week": None,
+            "blockers": [
+                "Le planning hebdomadaire manque sur cette période. "
+                "Renseignez une base manuelle vérifiée."
+            ],
+        }
+
+    signature = _paid_leave_schedule_signature(initial)
+    changed = any(
+        active_start < item.valid_from <= active_end
+        and _paid_leave_schedule_signature(settings_for_day(timeline, item.valid_from))
+        != signature
+        for item in snapshots
+    )
+    if changed:
+        return {
+            "base_days": None,
+            "method": "auto",
+            "worked_months": None,
+            "equivalent_weeks": None,
+            "scheduled_days_per_week": None,
+            "blockers": [
+                "Le mode d'accueil ou les jours habituels changent pendant la "
+                "période. Renseignez une base manuelle vérifiée."
+            ],
+        }
+
+    scheduled_weekdays = {
+        index for index, hours in enumerate(schedule) if hours and hours > 0
+    }
+    workdays = crud.list_workdays(db, contract.id, active_start, active_end)
+    workdays_by_date = {item.date: item for item in workdays}
+
+    planned_by_week: dict[date, bool] = {}
+    if initial["year_mode"] == ContractYearMode.INCOMPLETE:
+        first_week = week_start(active_start)
+        last_week = week_start(active_end)
+        stored = crud.list_week_schedules(db, contract.id, first_week, last_week)
+        planned_by_week = {item.week_start: item.planned for item in stored}
+        required_weeks = set()
+        current_week = first_week
+        while current_week <= last_week:
+            required_weeks.add(current_week)
+            current_week += timedelta(days=7)
+        if set(planned_by_week) != required_weeks:
+            return {
+                "base_days": None,
+                "method": "auto",
+                "worked_months": None,
+                "equivalent_weeks": None,
+                "scheduled_days_per_week": len(scheduled_weekdays),
+                "blockers": [
+                    "Les semaines programmées ne sont pas toutes confirmées "
+                    "sur cette période."
+                ],
+            }
+
+    absence_treatment_by_date = {}
+    for absence in absences:
+        if absence.absence_end < active_start or absence.absence_start > active_end:
+            continue
+        if absence.regularized_days:
+            return {
+                "base_days": None,
+                "method": "auto",
+                "worked_months": None,
+                "equivalent_weeks": None,
+                "scheduled_days_per_week": len(scheduled_weekdays),
+                "blockers": [
+                    "Une régularisation recouvre la période d'acquisition. "
+                    "Renseignez une base manuelle vérifiée."
+                ],
+            }
+        for day in iter_days(
+            max(absence.absence_start, active_start),
+            min(absence.absence_end, active_end),
+        ):
+            if day.weekday() in scheduled_weekdays:
+                absence_treatment_by_date[day] = absence.treatment
+
+    expected_dates = set()
+    for day in iter_days(active_start, active_end):
+        if day.weekday() not in scheduled_weekdays:
+            continue
+        if initial["year_mode"] == ContractYearMode.COMPLETE or planned_by_week.get(
+            week_start(day), False
+        ):
+            expected_dates.add(day)
+
+    missing_dates = {
+        day
+        for day in expected_dates
+        if day not in workdays_by_date and day not in absence_treatment_by_date
+    }
+    if missing_dates:
+        return {
+            "base_days": None,
+            "method": "auto",
+            "worked_months": None,
+            "equivalent_weeks": None,
+            "scheduled_days_per_week": len(scheduled_weekdays),
+            "blockers": [
+                f"Le calendrier est incomplet : {len(missing_dates)} journée(s) "
+                "attendue(s) manquent sur la période."
+            ],
+        }
+
+    ambiguous_absence_dates = {
+        day
+        for day in expected_dates
+        if day not in absence_treatment_by_date
+        and workdays_by_date[day].kind == WorkdayKind.ABSENCE
+    }
+    if ambiguous_absence_dates:
+        return {
+            "base_days": None,
+            "method": "auto",
+            "worked_months": None,
+            "equivalent_weeks": None,
+            "scheduled_days_per_week": len(scheduled_weekdays),
+            "blockers": [
+                f"{len(ambiguous_absence_dates)} journée(s) portent le statut "
+                "générique « absence ». Leur assimilation ne peut pas être "
+                "déduite automatiquement : utilisez une base manuelle vérifiée."
+            ],
+        }
+
+    work_equivalent_dates = set()
+    for day in expected_dates:
+        treatment = absence_treatment_by_date.get(day)
+        if treatment is not None:
+            if treatment != PaidLeaveTreatment.UNPAID:
+                work_equivalent_dates.add(day)
+            continue
+        if workdays_by_date[day].kind in {
+            WorkdayKind.NORMAL,
+            WorkdayKind.HOLIDAY,
+            WorkdayKind.ASSMAT_LEAVE,
+        }:
+            work_equivalent_dates.add(day)
+
+    for day, workday in workdays_by_date.items():
+        if (
+            day.weekday() in scheduled_weekdays
+            and workday.kind == WorkdayKind.NORMAL
+        ):
+            work_equivalent_dates.add(day)
+    for day, treatment in absence_treatment_by_date.items():
+        if treatment != PaidLeaveTreatment.UNPAID:
+            work_equivalent_dates.add(day)
+
+    full_calendar_months = (
+        initial["year_mode"] == ContractYearMode.COMPLETE
+        and active_start.day == 1
+        and active_end.day == calendar.monthrange(active_end.year, active_end.month)[1]
+        and expected_dates.issubset(work_equivalent_dates)
+    )
+    if full_calendar_months:
+        worked_months = (
+            (active_end.year - active_start.year) * 12
+            + active_end.month
+            - active_start.month
+            + 1
+        )
+        return {
+            "base_days": paid_leave_acquired_days_from_months(
+                worked_months=worked_months
+            ),
+            "method": "months",
+            "worked_months": worked_months,
+            "equivalent_weeks": None,
+            "scheduled_days_per_week": len(scheduled_weekdays),
+            "blockers": [],
+        }
+
+    equivalent_weeks = paid_leave_equivalent_weeks(
+        sorted(work_equivalent_dates),
+        scheduled_weekdays=scheduled_weekdays,
+    )
+    return {
+        "base_days": paid_leave_acquired_days(worked_weeks=equivalent_weeks),
+        "method": "weeks",
+        "worked_months": None,
+        "equivalent_weeks": equivalent_weeks,
+        "scheduled_days_per_week": len(scheduled_weekdays),
+        "blockers": [],
+    }
+
+
+def _paid_leave_absence_row(
+    db: Session,
+    *,
+    contract: Contract,
+    absence,
+) -> dict:
+    snapshots = crud.list_settings_snapshots(db, contract.id)
+    timeline = build_settings_timeline(contract, snapshots)
+    current = settings_for_day(timeline, absence.absence_start)
+    schedule = schedule_from_settings(current)
+    try:
+        schedule_total = weekly_schedule_total(schedule)
+    except ValueError:
+        schedule_total = None
+    blockers = []
+    days = None
+    if schedule_total is None or schedule_total <= 0:
+        blockers.append("planning historique manquant")
+    elif any(
+        absence.absence_start < item.valid_from <= absence.absence_end
+        and _paid_leave_schedule_signature(settings_for_day(timeline, item.valid_from))
+        != _paid_leave_schedule_signature(current)
+        for item in snapshots
+    ):
+        blockers.append("planning modifié pendant le congé")
+    else:
+        holidays = {
+            item.date
+            for item in crud.list_workdays(
+                db,
+                contract.id,
+                absence.absence_start,
+                absence.absence_end + timedelta(days=7),
+            )
+            if item.kind == WorkdayKind.HOLIDAY
+        }
+        taken_dates = paid_leave_taken_dates(
+            absence_start=absence.absence_start,
+            absence_end=absence.absence_end,
+            scheduled_weekdays={
+                index for index, hours in enumerate(schedule) if hours and hours > 0
+            },
+            holidays=holidays,
+        )
+        days = len(taken_dates)
+        if absence.regularized_days > days:
+            blockers.append("régularisation supérieure aux jours décomptés")
+
+    return {
+        "id": absence.id,
+        "absence_start": absence.absence_start,
+        "absence_end": absence.absence_end,
+        "treatment": absence.treatment.value,
+        "days": days,
+        "regularized_days": absence.regularized_days,
+        "charged_days": (
+            days - absence.regularized_days
+            if days is not None and absence.regularized_days <= days
+            else None
+        ),
+        "note": absence.note,
+        "is_future": absence.absence_start > date.today(),
+        "blockers": blockers,
+    }
+
+
+def build_paid_leave_period_summary(
+    db: Session,
+    *,
+    contract: Contract,
+    period_start: date,
+) -> dict:
+    period_end = date(period_start.year + 1, 5, 31)
+    settings = crud.get_paid_leave_period_settings(
+        db,
+        contract_id=contract.id,
+        period_start=period_start,
+    )
+    all_absences = crud.list_paid_leave_absences(db, contract.id)
+    absences = [
+        item
+        for item in all_absences
+        if item.reference_period_start == period_start
+    ]
+    automatic = _automatic_paid_leave_acquisition(
+        db,
+        contract=contract,
+        period_start=period_start,
+        period_end=period_end,
+        absences=all_absences,
+    )
+
+    basis_mode = settings.basis_mode if settings else PaidLeaveBasisMode.AUTO
+    base_days = None
+    basis_label = "Calcul automatique depuis le calendrier"
+    basis_details = None
+    basis_blockers = []
+    if basis_mode == PaidLeaveBasisMode.MONTHS:
+        base_days = paid_leave_acquired_days_from_months(
+            worked_months=settings.worked_months or 0
+        )
+        basis_label = "Base manuelle vérifiée · mois complets"
+        basis_details = f"{settings.worked_months or 0} mois"
+    elif basis_mode == PaidLeaveBasisMode.WEEKS:
+        base_days = paid_leave_acquired_days(
+            worked_weeks=settings.worked_weeks or 0,
+            worked_days=settings.worked_days,
+            scheduled_days_per_week=settings.scheduled_days_per_week,
+        )
+        basis_label = "Base manuelle vérifiée · semaines et jours"
+        basis_details = (
+            f"{settings.worked_weeks or 0} semaines + "
+            f"{settings.worked_days} jours"
+        )
+    else:
+        base_days = automatic["base_days"]
+        basis_blockers.extend(automatic["blockers"])
+        if automatic["method"] == "months":
+            basis_details = f"{automatic['worked_months']} mois complets"
+        elif automatic["method"] == "weeks" and automatic["equivalent_weeks"] is not None:
+            basis_details = f"{automatic['equivalent_weeks']:.2f} semaines équivalentes"
+
+    dependent_children = settings.dependent_children if settings else 0
+    employee_under_21 = settings.employee_under_21 if settings else False
+    additional_days = settings.additional_days if settings else 0
+    absence_rows = [
+        _paid_leave_absence_row(db, contract=contract, absence=item)
+        for item in absences
+    ]
+    calendar_leave_dates = {
+        item.date
+        for item in crud.list_workdays(
+            db,
+            contract.id,
+            contract.start_date,
+            min(contract.end_date or date.today(), date.today()),
+        )
+        if item.kind == WorkdayKind.ASSMAT_LEAVE
+    }
+    covered_leave_dates = {
+        day
+        for item in all_absences
+        for day in iter_days(item.absence_start, item.absence_end)
+    }
+    unallocated_calendar_leave_dates = calendar_leave_dates - covered_leave_dates
+    leave_blockers = [
+        f"Congé du {row['absence_start']} : {message}."
+        for row in absence_rows
+        for message in row["blockers"]
+        if row["treatment"] != PaidLeaveTreatment.UNPAID.value
+    ]
+    if unallocated_calendar_leave_dates:
+        leave_blockers.append(
+            f"{len(unallocated_calendar_leave_dates)} journée(s) marquée(s) "
+            "« congé assmat » dans le calendrier ne sont rattachées à aucune "
+            "période de droits."
+        )
+
+    taken_days = 0
+    advance_days = 0
+    regularized_days = 0
+    planned_charged_days = 0
+    usage_known = not leave_blockers
+    for row in absence_rows:
+        if row["treatment"] == PaidLeaveTreatment.UNPAID.value:
+            continue
+        if row["charged_days"] is None:
+            continue
+        if row["is_future"]:
+            planned_charged_days += row["charged_days"]
+            continue
+        taken_days += row["days"]
+        regularized_days += row["regularized_days"]
+        if row["treatment"] == PaidLeaveTreatment.ADVANCE.value:
+            advance_days += row["days"]
+
+    balance = None
+    if base_days is not None and usage_known:
+        balance = calculate_paid_leave_balance(
+            base_acquired_days=base_days,
+            dependent_children=dependent_children,
+            employee_under_21=employee_under_21,
+            additional_days=additional_days,
+            taken_days=taken_days,
+            advance_days=advance_days,
+            regularized_days=regularized_days,
+        )
+
+    history_confirmed = settings.history_confirmed if settings else False
+    reliable = (
+        balance is not None
+        and not basis_blockers
+        and not leave_blockers
+        and history_confirmed
+    )
+    status = "reliable" if reliable else "to_confirm" if balance else "incomplete"
+    return {
+        "period_start": period_start,
+        "period_end": period_end,
+        "basis_mode": basis_mode.value,
+        "basis_label": basis_label,
+        "basis_details": basis_details,
+        "basis_blockers": basis_blockers,
+        "leave_blockers": leave_blockers,
+        "balance": balance,
+        "planned_charged_days": planned_charged_days,
+        "remaining_after_planned": (
+            balance.remaining_days - planned_charged_days if balance else None
+        ),
+        "absence_rows": absence_rows,
+        "settings": settings,
+        "history_confirmed": history_confirmed,
+        "status": status,
+        "is_ongoing": period_start <= date.today() <= period_end,
+        "calculated_through": min(
+            period_end,
+            contract.end_date or period_end,
+            date.today(),
+        ),
+    }
+
+
+def build_paid_leave_year_rows(
+    db: Session,
+    *,
+    contract: Contract,
+    calendar_year: int,
+) -> list[dict]:
+    """Return the acquisition periods intersecting one calendar year."""
+    rows = []
+    for period_start in (
+        date(calendar_year - 1, 6, 1),
+        date(calendar_year, 6, 1),
+    ):
+        period_end = date(period_start.year + 1, 5, 31)
+        if contract.start_date > period_end or (
+            contract.end_date is not None and contract.end_date < period_start
+        ):
+            continue
+        summary = build_paid_leave_period_summary(
+            db,
+            contract=contract,
+            period_start=period_start,
+        )
+        rows.append(
+            {
+                "period_start": period_start,
+                "period_end": period_end,
+                "status": summary["status"],
+                "balance": summary["balance"],
+                "planned_charged_days": summary["planned_charged_days"],
+                "remaining_after_planned": summary["remaining_after_planned"],
+            }
+        )
+    return rows
+
+
 @app.get("/contracts/{contract_id}/paid-leave", response_class=HTMLResponse)
 def paid_leave_page(
     contract_id: int,
     request: Request,
     year: int | None = None,
     saved: bool = False,
+    absence_saved: bool = False,
+    deleted: bool = False,
     db: Session = Depends(get_db),
 ):
     contract = crud.get_contract(db, contract_id)
@@ -2097,7 +2613,11 @@ def paid_leave_page(
     period_start, period_end = _paid_leave_year_bounds(date(target_year, 6, 1))
 
     history = crud.list_paid_leaves(db, contract_id)
-
+    summary = build_paid_leave_period_summary(
+        db,
+        contract=contract,
+        period_start=period_start,
+    )
     return templates.TemplateResponse(
         request,
         "paid_leave.html",
@@ -2107,12 +2627,228 @@ def paid_leave_page(
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "period_start": period_start,
             "period_end": period_end,
+            "previous_year": period_start.year - 1,
+            "next_year": period_start.year + 1,
             "history": history,
             "saved": saved,
+            "absence_saved": absence_saved,
+            "deleted": deleted,
+            **summary,
             "current_section": "paid-leave",
         },
     )
 
+
+@app.post("/contracts/{contract_id}/paid-leave/settings")
+def save_paid_leave_period_settings(
+    contract_id: int,
+    period_start: str = Form(...),
+    basis_mode: str = Form(...),
+    worked_months: str | None = Form(None),
+    worked_weeks: str | None = Form(None),
+    worked_days: str | None = Form(None),
+    scheduled_days_per_week: str | None = Form(None),
+    dependent_children: str = Form("0"),
+    employee_under_21: bool = Form(False),
+    history_confirmed: bool = Form(False),
+    additional_days: str = Form("0"),
+    additional_days_reason: str | None = Form(None),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    try:
+        normalized_period_start = date_from_iso(period_start)
+        mode = PaidLeaveBasisMode(basis_mode)
+        months = parse_optional_int(worked_months)
+        weeks = parse_optional_int(worked_weeks)
+        days = parse_optional_int(worked_days) or 0
+        days_per_week = parse_optional_int(scheduled_days_per_week)
+        children = int(dependent_children)
+        extra_days = int(additional_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Valeur invalide") from exc
+
+    if normalized_period_start != date(normalized_period_start.year, 6, 1):
+        raise HTTPException(
+            status_code=400,
+            detail="La période doit commencer le 1er juin.",
+        )
+    if children < 0 or extra_days < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Les nombres de jours et d'enfants doivent être positifs.",
+        )
+
+    if mode == PaidLeaveBasisMode.AUTO:
+        months = None
+        weeks = None
+        days = 0
+        days_per_week = None
+    elif mode == PaidLeaveBasisMode.MONTHS:
+        if months is None or not 0 <= months <= 12:
+            raise HTTPException(
+                status_code=400,
+                detail="Indiquez entre 0 et 12 mois complets.",
+            )
+        weeks = None
+        days = 0
+        days_per_week = None
+    else:
+        if weeks is None or weeks < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Indiquez un nombre de semaines positif.",
+            )
+        if days_per_week is None or not 1 <= days_per_week <= 7:
+            raise HTTPException(
+                status_code=400,
+                detail="Indiquez entre 1 et 7 jours habituels par semaine.",
+            )
+        if days < 0 or days >= days_per_week:
+            raise HTTPException(
+                status_code=400,
+                detail="Les jours complémentaires doivent être inférieurs à une semaine.",
+            )
+        months = None
+
+    clean_reason = (additional_days_reason or "").strip() or None
+    if extra_days and clean_reason is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Précisez l'origine des jours supplémentaires.",
+        )
+    crud.upsert_paid_leave_period_settings(
+        db,
+        contract_id=contract_id,
+        period_start=normalized_period_start,
+        basis_mode=mode,
+        worked_months=months,
+        worked_weeks=weeks,
+        worked_days=days,
+        scheduled_days_per_week=days_per_week,
+        dependent_children=children,
+        employee_under_21=employee_under_21,
+        history_confirmed=history_confirmed,
+        additional_days=extra_days,
+        additional_days_reason=clean_reason,
+        note=(note or "").strip() or None,
+    )
+    db.commit()
+    return RedirectResponse(
+        url=(
+            f"/contracts/{contract_id}/paid-leave"
+            f"?year={normalized_period_start.year}&saved=1"
+        ),
+        status_code=303,
+    )
+
+
+@app.post("/contracts/{contract_id}/paid-leave/absences")
+def create_paid_leave_absence_route(
+    contract_id: int,
+    reference_period_start: str = Form(...),
+    absence_start: str = Form(...),
+    absence_end: str = Form(...),
+    treatment: str = Form(...),
+    regularized_days: str = Form("0"),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    try:
+        ref_start = date_from_iso(reference_period_start)
+        start = date_from_iso(absence_start)
+        end = date_from_iso(absence_end)
+        parsed_treatment = PaidLeaveTreatment(treatment)
+        regularized = int(regularized_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Valeur invalide") from exc
+
+    if ref_start != date(ref_start.year, 6, 1):
+        raise HTTPException(status_code=400, detail="Période de droits invalide.")
+    if end < start:
+        raise HTTPException(
+            status_code=400,
+            detail="La fin du congé doit suivre son début.",
+        )
+    if start < contract.start_date or (
+        contract.end_date is not None and end > contract.end_date
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Le congé doit être compris dans les dates du contrat.",
+        )
+    if regularized < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Les jours régularisés ne peuvent pas être négatifs.",
+        )
+    if parsed_treatment == PaidLeaveTreatment.UNPAID and regularized:
+        raise HTTPException(
+            status_code=400,
+            detail="Un congé sans solde ne peut pas être régularisé une seconde fois.",
+        )
+    overlaps = [
+        item
+        for item in crud.list_paid_leave_absences(db, contract_id)
+        if item.absence_start <= end and item.absence_end >= start
+    ]
+    if overlaps:
+        raise HTTPException(
+            status_code=400,
+            detail="Cette période chevauche un congé déjà enregistré.",
+        )
+
+    crud.create_paid_leave_absence(
+        db,
+        contract_id=contract_id,
+        reference_period_start=ref_start,
+        absence_start=start,
+        absence_end=end,
+        treatment=parsed_treatment,
+        regularized_days=regularized,
+        note=(note or "").strip() or None,
+    )
+    db.commit()
+    return RedirectResponse(
+        url=(
+            f"/contracts/{contract_id}/paid-leave"
+            f"?year={ref_start.year}&absence_saved=1"
+        ),
+        status_code=303,
+    )
+
+
+@app.post("/contracts/{contract_id}/paid-leave/absences/{absence_id}/delete")
+def delete_paid_leave_absence_route(
+    contract_id: int,
+    absence_id: int,
+    reference_period_start: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        ref_start = date_from_iso(reference_period_start)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Période invalide") from exc
+    if not crud.delete_paid_leave_absence(
+        db,
+        contract_id=contract_id,
+        absence_id=absence_id,
+    ):
+        raise HTTPException(status_code=404, detail="Congé introuvable")
+    db.commit()
+    return RedirectResponse(
+        url=(
+            f"/contracts/{contract_id}/paid-leave"
+            f"?year={ref_start.year}&deleted=1"
+        ),
+        status_code=303,
+    )
 
 @app.get("/contracts/{contract_id}/payments", response_class=HTMLResponse)
 def payments_page(

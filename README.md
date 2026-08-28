@@ -43,21 +43,33 @@ les jours feries chomes correspondant a un jour habituel restent comptes dans
 le denominateur mensuel; la programmation annuelle ne modifie donc pas ce
 calcul. L'interface signale tout planning contractuel manquant au lieu de
 produire une approximation. L'ancien compteur de conges payes, fonde sur une
-heuristique de jours saisis, a ete retire des ecrans. Aucun solde n'est affiche
-tant que le nouveau compteur ne dispose pas des faits necessaires.
+heuristique de jours saisis, a ete remplace par un compteur explicite. Aucun
+solde n'est affiche tant que les faits necessaires ne permettent pas de le
+calculer.
 
-Les fondations pures du futur compteur couvrent deja:
+Le compteur de conges payes est disponible sur
+`/contracts/{id}/paid-leave?year=YYYY` et dans la synthese annuelle. Il couvre:
 - la periode d'acquisition du 1er juin au 31 mai;
+- la premiere periode, de la date d'embauche au 31 mai suivant;
 - l'acquisition de 2,5 jours ouvrables par equivalent de quatre semaines,
   arrondie au jour superieur et plafonnee a 30 jours de base;
 - les jours supplementaires pour enfants a charge selon la tranche d'age;
 - le decompte des jours pris du premier jour normalement travaille jusqu'a la
-  veille de la reprise, hors dimanches et jours feries.
+  veille de la reprise, hors dimanches et jours feries;
+- l'imputation explicite sur droits acquis, par anticipation ou sans solde;
+- les regularisations financieres qui rendent des jours au solde;
+- la vue `acquis / pris / anticipes / regularises / restant`, sans persister
+  ces totaux derives.
 
-La vue complete `acquis / pris / anticipes / regularises / restant` sera
-branchee apres ajout des faits historiques manquants. Les anciens paiements
-restent conserves, mais leurs nombres de jours derives ne sont plus presentes
-comme un solde fiable.
+Le calcul automatique exige un planning stable et un calendrier complet. Une
+base manuelle en mois complets ou en semaines et jours permet de reprendre un
+decompte anterieur verifie. Ce mode est aussi a utiliser en cas de maladie,
+suspension ou autre situation dont l'application ne peut pas determiner seule
+l'assimilation. Quelle que soit la methode, le solde reste « a confirmer » tant
+que l'utilisateur n'a pas atteste la base et la saisie de toutes les periodes
+de conge. Les conges deja marques au calendrier mais non imputes sont signales.
+Les anciens paiements restent conserves, mais leurs nombres de jours derives ne
+sont pas reutilises comme un solde fiable.
 
 Le taux net des heures complementaires est un fait contractuel explicite et
 historise. Les contrats existants ne sont pas completes automatiquement: le

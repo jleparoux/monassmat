@@ -3,6 +3,7 @@ from enum import Enum
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -45,6 +46,18 @@ class PaymentKind(str, Enum):
 class PaidLeaveMethod(str, Enum):
     MAINTIEN = "maintien"
     DIXIEME = "dixieme"
+
+
+class PaidLeaveBasisMode(str, Enum):
+    AUTO = "auto"
+    MONTHS = "months"
+    WEEKS = "weeks"
+
+
+class PaidLeaveTreatment(str, Enum):
+    ACQUIRED = "acquired"
+    ADVANCE = "advance"
+    UNPAID = "unpaid"
 
 
 class ContractYearMode(str, Enum):
@@ -128,6 +141,16 @@ class Contract(Base):
     )
 
     paid_leaves: Mapped[list["PaidLeave"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+    )
+
+    paid_leave_period_settings: Mapped[list["PaidLeavePeriodSettings"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+    )
+
+    paid_leave_absences: Mapped[list["PaidLeaveAbsence"]] = relationship(
         back_populates="contract",
         cascade="all, delete-orphan",
     )
@@ -286,6 +309,120 @@ class PaidLeave(Base):
     amount_paid: Mapped[float | None] = mapped_column(Float)
 
     contract: Mapped["Contract"] = relationship(back_populates="paid_leaves")
+
+
+class PaidLeavePeriodSettings(Base):
+    __tablename__ = "paid_leave_period_settings"
+    __table_args__ = (
+        UniqueConstraint(
+            "contract_id",
+            "period_start",
+            name="uq_paid_leave_period_settings",
+        ),
+        CheckConstraint("dependent_children >= 0", name="ck_paid_leave_children"),
+        CheckConstraint("additional_days >= 0", name="ck_paid_leave_additional_days"),
+        CheckConstraint(
+            "worked_months IS NULL OR (worked_months >= 0 AND worked_months <= 12)",
+            name="ck_paid_leave_worked_months",
+        ),
+        CheckConstraint(
+            "worked_weeks IS NULL OR worked_weeks >= 0",
+            name="ck_paid_leave_worked_weeks",
+        ),
+        CheckConstraint("worked_days >= 0", name="ck_paid_leave_worked_days"),
+        CheckConstraint(
+            "scheduled_days_per_week IS NULL OR "
+            "(scheduled_days_per_week >= 1 AND scheduled_days_per_week <= 7)",
+            name="ck_paid_leave_scheduled_days",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_id: Mapped[int] = mapped_column(
+        ForeignKey("contract.id"), nullable=False
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    basis_mode: Mapped[PaidLeaveBasisMode] = mapped_column(
+        SQLEnum(
+            PaidLeaveBasisMode,
+            name="paidleavebasismode",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=PaidLeaveBasisMode.AUTO,
+    )
+    worked_months: Mapped[int | None] = mapped_column(Integer)
+    worked_weeks: Mapped[int | None] = mapped_column(Integer)
+    worked_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    scheduled_days_per_week: Mapped[int | None] = mapped_column(Integer)
+    dependent_children: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    employee_under_21: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    history_confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    additional_days: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    additional_days_reason: Mapped[str | None] = mapped_column(String(240))
+    note: Mapped[str | None] = mapped_column(String(500))
+
+    contract: Mapped["Contract"] = relationship(
+        back_populates="paid_leave_period_settings"
+    )
+
+
+class PaidLeaveAbsence(Base):
+    __tablename__ = "paid_leave_absence"
+    __table_args__ = (
+        UniqueConstraint(
+            "contract_id",
+            "absence_start",
+            "absence_end",
+            name="uq_paid_leave_absence_period",
+        ),
+        CheckConstraint(
+            "absence_end >= absence_start",
+            name="ck_paid_leave_absence_dates",
+        ),
+        CheckConstraint(
+            "regularized_days >= 0",
+            name="ck_paid_leave_regularized_days",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_id: Mapped[int] = mapped_column(
+        ForeignKey("contract.id"), nullable=False
+    )
+    reference_period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    absence_start: Mapped[date] = mapped_column(Date, nullable=False)
+    absence_end: Mapped[date] = mapped_column(Date, nullable=False)
+    treatment: Mapped[PaidLeaveTreatment] = mapped_column(
+        SQLEnum(
+            PaidLeaveTreatment,
+            name="paidleavetreatment",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+    )
+    regularized_days: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    note: Mapped[str | None] = mapped_column(String(500))
+
+    contract: Mapped["Contract"] = relationship(
+        back_populates="paid_leave_absences"
+    )
 
 
 class Payment(Base):
