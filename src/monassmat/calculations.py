@@ -33,6 +33,15 @@ class MonthDataStatus(str, Enum):
     COMPLETE = "complete"
 
 
+class MonthlyWorkflowStatus(str, Enum):
+    SETUP_REQUIRED = "setup_required"
+    DATA_ENTRY = "data_entry"
+    READY_TO_DECLARE = "ready_to_declare"
+    DECLARED = "declared"
+    PAYMENT_RECORDED = "payment_recorded"
+    CLOSED = "closed"
+
+
 @dataclass(frozen=True)
 class ContractFacts:
     start_date: date
@@ -164,6 +173,26 @@ def evaluate_month_completeness(
         missing_days=len(missing_dates),
         missing_due_days=len(missing_due_dates),
     )
+
+
+def monthly_workflow_status(
+    *,
+    data_status: MonthDataStatus,
+    declaration_confirmed: bool,
+    payment_recorded: bool,
+) -> MonthlyWorkflowStatus:
+    """Derive the next monthly action from recorded facts only."""
+    if data_status == MonthDataStatus.SCHEDULE_MISSING:
+        return MonthlyWorkflowStatus.SETUP_REQUIRED
+    if data_status != MonthDataStatus.COMPLETE:
+        return MonthlyWorkflowStatus.DATA_ENTRY
+    if declaration_confirmed and payment_recorded:
+        return MonthlyWorkflowStatus.CLOSED
+    if declaration_confirmed:
+        return MonthlyWorkflowStatus.DECLARED
+    if payment_recorded:
+        return MonthlyWorkflowStatus.PAYMENT_RECORDED
+    return MonthlyWorkflowStatus.READY_TO_DECLARE
 
 
 def prepare_pajemploi_declaration(

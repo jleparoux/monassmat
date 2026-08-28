@@ -48,7 +48,12 @@
           <div class="kpi">
             <div class="kpi__label">Déclaration du mois</div>
             <div class="kpi__value kpi__value--small">
-              {% if item.data_status == "complete" %}Prête à préparer{% elif item.data_status == "schedule_missing" %}Bloquée{% else %}Après saisie{% endif %}
+              {% if item.workflow_status == "closed" %}Déclarée et payée
+              {% elif item.workflow_status == "declared" %}Déclarée, paiement à saisir
+              {% elif item.workflow_status == "payment_recorded" %}Confirmation à saisir
+              {% elif item.workflow_status == "ready_to_declare" %}Prête à préparer
+              {% elif item.workflow_status == "setup_required" %}Bloquée
+              {% else %}Après saisie{% endif %}
             </div>
           </div>
         </div>

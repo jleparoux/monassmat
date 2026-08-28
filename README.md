@@ -75,8 +75,16 @@ entretien et repas. Un export dedie est disponible via
 La fiche distingue:
 - les blocages qui empechent un calcul fiable (planning ou taux manquant,
   changement de parametres dans le mois, deduction d'absence incomplete);
-- les controles manuels qui restent necessaires (date de paiement, conges
+- les controles manuels qui restent necessaires (conges
   payes en accueil sur 46 semaines ou moins, indemnites kilometriques).
+
+Le parcours mensuel suit trois faits distincts: calendrier complet, declaration
+Pajemploi confirmee, puis paiement enregistre. La confirmation de declaration
+conserve uniquement le mois et la date declares; le statut du parcours est
+toujours recalcule et n'est pas stocke. Elle peut etre annulee en cas d'erreur.
+Apres paiement, l'utilisateur revient automatiquement sur le recapitulatif du
+mois. Les valeurs fiables disposent d'un bouton de copie compatible avec le
+serveur local HTTP du NAS.
 
 Les conges payes verses sont ajoutes au salaire net lorsqu'un paiement de type
 `paid_leave` couvre le mois. Leur nombre de jours doit encore etre verifie

@@ -18,6 +18,45 @@
   <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/pajemploi?month={{ next_month }}">Mois suivant →</a>
 </div>
 
+<section class="card monthly-workflow" aria-label="Avancement du mois">
+  <div class="card__header">
+    <div>
+      <div class="title">Parcours du mois</div>
+      <div class="muted">Du calendrier jusqu'au paiement, sans étape implicite.</div>
+    </div>
+    {% if workflow_status == "closed" %}
+      <span class="badge badge--ok">Mois clôturé</span>
+    {% elif workflow_status == "declared" %}
+      <span class="badge badge--ok">Déclaration confirmée</span>
+    {% elif workflow_status == "payment_recorded" %}
+      <span class="badge badge--warning">Confirmation manquante</span>
+    {% elif workflow_status == "ready_to_declare" %}
+      <span class="badge badge--ok">Prêt à déclarer</span>
+    {% else %}
+      <span class="badge badge--warning">À compléter</span>
+    {% endif %}
+  </div>
+  <div class="card__body workflow-steps">
+    <div class="workflow-step {% if summary.data_status == 'complete' %}is-done{% else %}is-current{% endif %}">
+      <span class="workflow-step__number">{% if summary.data_status == 'complete' %}✓{% else %}1{% endif %}</span>
+      <div><strong>Calendrier</strong><span>{% if summary.data_status == 'complete' %}Toutes les journées sont renseignées{% else %}Terminer les journées du mois{% endif %}</span></div>
+    </div>
+    <div class="workflow-step {% if declaration %}is-done{% elif calculation_ready %}is-current{% endif %}">
+      <span class="workflow-step__number">{% if declaration %}✓{% else %}2{% endif %}</span>
+      <div><strong>Déclaration</strong><span>{% if declaration %}Confirmée le {{ declaration.declared_on.strftime('%d/%m/%Y') }}{% elif calculation_ready %}Reporter puis valider sur Pajemploi{% else %}Disponible après préparation complète{% endif %}</span></div>
+    </div>
+    <div class="workflow-step {% if monthly_payments %}is-done{% elif declaration %}is-current{% endif %}">
+      <span class="workflow-step__number">{% if monthly_payments %}✓{% else %}3{% endif %}</span>
+      <div><strong>Paiement</strong><span>{% if monthly_payments %}Paiement enregistré{% elif declaration %}À enregistrer lors du versement{% else %}Après la déclaration{% endif %}</span></div>
+    </div>
+  </div>
+</section>
+
+{% if declared %}<div class="notice notice--ok">Déclaration confirmée. Prochaine étape : enregistrer le paiement.</div>{% endif %}
+{% if reopened %}<div class="notice notice--neutral">La confirmation de déclaration a été annulée.</div>{% endif %}
+{% if payment_saved %}<div class="notice notice--ok">Paiement enregistré. Le mois est maintenant clôturé si la déclaration est confirmée.</div>{% endif %}
+{% if workflow_status == "payment_recorded" %}<div class="notice notice--warning">Un paiement existe, mais la déclaration Pajemploi n'a pas encore été confirmée dans l'application.</div>{% endif %}
+
 {% if calculation_ready %}
   <div class="notice notice--ok">
     Le calcul du salaire et des champs d'activite est pret. Effectuez encore les controles manuels listes ci-dessous avant validation sur Pajemploi.
@@ -58,19 +97,19 @@
         </div>
         <div class="summary-row">
           <span class="label">Heures normales</span>
-          <span class="value">{% if preparation and preparation.normal_hours is not none %}{{ preparation.normal_hours }} h{% else %}A completer{% endif %}</span>
+          <span class="value copy-value">{% if preparation and preparation.normal_hours is not none %}{{ preparation.normal_hours }} h{% if calculation_ready %}<button class="copy-button" type="button" data-copy-value="{{ preparation.normal_hours }}">Copier</button>{% endif %}{% else %}A completer{% endif %}</span>
         </div>
         <div class="summary-row">
           <span class="label">Heures complementaires</span>
-          <span class="value">{{ summary.hours_complementary | round(2) }} h</span>
+          <span class="value copy-value">{{ summary.hours_complementary | round(2) }} h{% if calculation_ready %}<button class="copy-button" type="button" data-copy-value="{{ summary.hours_complementary | round(2) | replace('.', ',') }}">Copier</button>{% endif %}</span>
         </div>
         <div class="summary-row">
           <span class="label">Heures majorees</span>
-          <span class="value">{{ summary.hours_majorated | round(2) }} h</span>
+          <span class="value copy-value">{{ summary.hours_majorated | round(2) }} h{% if calculation_ready %}<button class="copy-button" type="button" data-copy-value="{{ summary.hours_majorated | round(2) | replace('.', ',') }}">Copier</button>{% endif %}</span>
         </div>
         <div class="summary-row">
           <span class="label">Jours d'activite</span>
-          <span class="value">{% if preparation and preparation.activity_days is not none %}{{ preparation.activity_days }} j{% else %}A completer{% endif %}</span>
+          <span class="value copy-value">{% if preparation and preparation.activity_days is not none %}{{ preparation.activity_days }} j{% if calculation_ready %}<button class="copy-button" type="button" data-copy-value="{{ preparation.activity_days }}">Copier</button>{% endif %}{% else %}A completer{% endif %}</span>
         </div>
         <div class="summary-row">
           <span class="label">Jours de conges payes</span>
@@ -86,9 +125,9 @@
         </div>
         <div class="summary-row">
           <span class="label">Salaire net du mois</span>
-          <span class="value highlight">
+          <span class="value highlight copy-value">
             {% if preparation and preparation.net_salary is not none %}
-              {{ preparation.net_salary | round(2) }} €
+              {{ preparation.net_salary | round(2) }} €{% if calculation_ready %}<button class="copy-button" type="button" data-copy-value="{{ preparation.net_salary | round(2) | replace('.', ',') }}">Copier</button>{% endif %}
             {% else %}
               A completer
             {% endif %}
@@ -139,11 +178,11 @@
       <div class="summary-list">
         <div class="summary-row">
           <span class="label">Entretien</span>
-          <span class="value">{{ summary.fee_maintenance_total | round(2) }} €</span>
+          <span class="value copy-value">{{ summary.fee_maintenance_total | round(2) }} €{% if calculation_ready %}<button class="copy-button" type="button" data-copy-value="{{ summary.fee_maintenance_total | round(2) | replace('.', ',') }}">Copier</button>{% endif %}</span>
         </div>
         <div class="summary-row">
           <span class="label">Repas</span>
-          <span class="value">{{ summary.fee_meal_total | round(2) }} €</span>
+          <span class="value copy-value">{{ summary.fee_meal_total | round(2) }} €{% if calculation_ready %}<button class="copy-button" type="button" data-copy-value="{{ summary.fee_meal_total | round(2) | replace('.', ',') }}">Copier</button>{% endif %}</span>
         </div>
         <div class="summary-row">
           <span class="label">Kilometriques</span>
@@ -159,8 +198,26 @@
   </section>
 
   <section class="card">
-    <div class="card__header"><div class="title">Paiement et controles</div></div>
+    <div class="card__header"><div class="title">Déclaration, paiement et contrôles</div></div>
     <div class="card__body">
+      {% if declaration %}
+        <div class="notice notice--ok declaration-confirmed">
+          <div><strong>Déclaration Pajemploi confirmée</strong><br><span>Validée le {{ declaration.declared_on.strftime('%d/%m/%Y') }}.</span></div>
+          <form method="post" action="/contracts/{{ contract_id }}/pajemploi/declaration/delete">
+            <input type="hidden" name="month" value="{{ period_start }}" />
+            <button class="btn btn-secondary btn-small" type="submit">Annuler</button>
+          </form>
+        </div>
+      {% elif calculation_ready %}
+        <div class="notice notice--neutral">Après avoir réellement validé la déclaration sur Pajemploi, confirmez-la ici pour conserver cette information.</div>
+        <form class="declaration-form" method="post" action="/contracts/{{ contract_id }}/pajemploi/declaration">
+          <input type="hidden" name="month" value="{{ period_start }}" />
+          <label class="field"><span>Date de déclaration</span><input name="declared_on" type="date" value="{{ today }}" required /></label>
+          <button class="btn btn-primary" type="submit">J'ai validé la déclaration</button>
+        </form>
+      {% else %}
+        <div class="notice notice--warning">La déclaration pourra être confirmée lorsque la préparation sera complète.</div>
+      {% endif %}
       {% if monthly_payments %}
         {% for payment in monthly_payments %}
           <div class="summary-row">
@@ -178,7 +235,7 @@
         <div class="notice notice--warning">{{ item }}</div>
       {% endfor %}
       <div class="actions">
-        <a class="btn btn-primary" href="/contracts/{{ contract_id }}/payments?period_start={{ period_start }}&period_end={{ period_end }}{% if preparation and preparation.net_salary is not none %}&amount={{ preparation.net_salary | round(2) }}{% endif %}">Enregistrer le paiement</a>
+        <a class="btn {% if declaration %}btn-primary{% else %}btn-secondary{% endif %}" href="/contracts/{{ contract_id }}/payments?period_start={{ period_start }}&period_end={{ period_end }}{% if preparation and preparation.net_salary is not none %}&amount={{ preparation.net_salary | round(2) }}{% endif %}">Enregistrer le paiement</a>
       </div>
     </div>
   </section>
@@ -189,3 +246,5 @@
 </p>
 
 {% endblock %}
+
+{% block scripts %}<script src="/static/pajemploi.js?v=20260828-1"></script>{% endblock %}

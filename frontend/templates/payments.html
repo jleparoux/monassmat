@@ -22,6 +22,7 @@
   <div class="card__header"><div class="title">Nouveau paiement</div></div>
   <div class="card__body">
     <form method="post" action="/contracts/{{ contract_id }}/payments">
+      {% if return_month %}<input type="hidden" name="return_month" value="{{ return_month }}" />{% endif %}
       <div class="field-group">
         <label class="field">
           <span>Période début</span>

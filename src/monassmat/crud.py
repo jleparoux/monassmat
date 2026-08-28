@@ -11,6 +11,7 @@ from .models import (
     ContractSettingsSnapshot,
     ContractWeekSchedule,
     ContractYearMode,
+    MonthlyDeclaration,
     PaidLeave,
     PaidLeaveMethod,
     Payment,
@@ -361,4 +362,60 @@ def delete_payment(db: Session, payment_id: int) -> bool:
     if not payment:
         return False
     db.delete(payment)
+    return True
+
+
+def get_monthly_declaration(
+    db: Session,
+    *,
+    contract_id: int,
+    month: date,
+) -> MonthlyDeclaration | None:
+    stmt = select(MonthlyDeclaration).where(
+        MonthlyDeclaration.contract_id == contract_id,
+        MonthlyDeclaration.month == month.replace(day=1),
+    )
+    return db.scalar(stmt)
+
+
+def upsert_monthly_declaration(
+    db: Session,
+    *,
+    contract_id: int,
+    month: date,
+    declared_on: date,
+) -> MonthlyDeclaration:
+    normalized_month = month.replace(day=1)
+    existing = get_monthly_declaration(
+        db,
+        contract_id=contract_id,
+        month=normalized_month,
+    )
+    if existing:
+        existing.declared_on = declared_on
+        return existing
+
+    declaration = MonthlyDeclaration(
+        contract_id=contract_id,
+        month=normalized_month,
+        declared_on=declared_on,
+    )
+    db.add(declaration)
+    return declaration
+
+
+def delete_monthly_declaration(
+    db: Session,
+    *,
+    contract_id: int,
+    month: date,
+) -> bool:
+    declaration = get_monthly_declaration(
+        db,
+        contract_id=contract_id,
+        month=month,
+    )
+    if not declaration:
+        return False
+    db.delete(declaration)
     return True

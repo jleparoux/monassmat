@@ -19,6 +19,7 @@ from . import crud
 from .calculations import (
     ContractFacts,
     MonthDataStatus,
+    MonthlyWorkflowStatus,
     ScheduledDayFacts,
     WorkdayFacts,
     absence_deduction_46_weeks,
@@ -28,6 +29,7 @@ from .calculations import (
     contract_monthly_salary,
     evaluate_month_completeness,
     hours_between_times,
+    monthly_workflow_status,
     parse_holidays_response,
     prepare_pajemploi_declaration,
     scheduled_hours_for_day,
@@ -805,6 +807,20 @@ def build_pajemploi_preparation(contract_id: int, month: date) -> dict:
         monthly_payments = [
             item for item in payments if item.kind == PaymentKind.MONTHLY
         ]
+        declaration = crud.get_monthly_declaration(
+            db,
+            contract_id=contract_id,
+            month=start,
+        )
+        monthly_payment_rows = [
+            {"amount": item.amount, "paid_at": item.paid_at}
+            for item in monthly_payments
+        ]
+        declaration_fact = (
+            {"declared_on": declaration.declared_on}
+            if declaration is not None
+            else None
+        )
 
         majorated_hourly_rate = None
         coefficient = current["majoration_rate"]
@@ -863,6 +879,11 @@ def build_pajemploi_preparation(contract_id: int, month: date) -> dict:
             and preparation.net_salary is not None
             and not blockers
         )
+        workflow_status = monthly_workflow_status(
+            data_status=MonthDataStatus(summary.data_status),
+            declaration_confirmed=declaration is not None,
+            payment_recorded=bool(monthly_payments),
+        )
         return {
             "contract_id": contract_id,
             "contract_name": contract.name or f"Contrat #{contract_id}",
@@ -877,6 +898,9 @@ def build_pajemploi_preparation(contract_id: int, month: date) -> dict:
             "blockers": blockers,
             "checks": checks,
             "calculation_ready": calculation_ready,
+            "declaration": declaration_fact,
+            "workflow_status": workflow_status.value,
+            "today": date.today().isoformat(),
             "paid_leave_days": (
                 None
                 if current["year_mode"] == ContractYearMode.COMPLETE
@@ -886,7 +910,7 @@ def build_pajemploi_preparation(contract_id: int, month: date) -> dict:
             "meal_and_maintenance_total": (
                 summary.fee_meal_total + summary.fee_maintenance_total
             ),
-            "monthly_payments": monthly_payments,
+            "monthly_payments": monthly_payment_rows,
         }
 
 
@@ -1311,6 +1335,9 @@ def pajemploi_preparation_page(
     contract_id: int,
     request: Request,
     month: date | None = None,
+    declared: bool = False,
+    reopened: bool = False,
+    payment_saved: bool = False,
 ):
     selected_month = (month or date.today()).replace(day=1)
     data = build_pajemploi_preparation(contract_id, selected_month)
@@ -1320,8 +1347,91 @@ def pajemploi_preparation_page(
         {
             "title": "Preparation Pajemploi",
             "current_section": "pajemploi",
+            "declared": declared,
+            "reopened": reopened,
+            "payment_saved": payment_saved,
             **data,
         },
+    )
+
+
+@app.post(
+    "/contracts/{contract_id}/pajemploi/declaration",
+    response_class=HTMLResponse,
+)
+def confirm_monthly_declaration(
+    contract_id: int,
+    month: str = Form(...),
+    declared_on: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    try:
+        selected_month = date_from_iso(month).replace(day=1)
+        declaration_date = date_from_iso(declared_on)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Date invalide") from exc
+    if declaration_date > date.today():
+        raise HTTPException(
+            status_code=400,
+            detail="La date de déclaration ne peut pas être future.",
+        )
+
+    data = build_pajemploi_preparation(contract_id, selected_month)
+    if not data["calculation_ready"]:
+        raise HTTPException(
+            status_code=400,
+            detail="La préparation doit être complète avant confirmation.",
+        )
+
+    crud.upsert_monthly_declaration(
+        db,
+        contract_id=contract_id,
+        month=selected_month,
+        declared_on=declaration_date,
+    )
+    db.commit()
+    return RedirectResponse(
+        url=(
+            f"/contracts/{contract_id}/pajemploi"
+            f"?month={selected_month.isoformat()}&declared=1"
+        ),
+        status_code=303,
+    )
+
+
+@app.post(
+    "/contracts/{contract_id}/pajemploi/declaration/delete",
+    response_class=HTMLResponse,
+)
+def reopen_monthly_declaration(
+    contract_id: int,
+    month: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    contract = crud.get_contract(db, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    try:
+        selected_month = date_from_iso(month).replace(day=1)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Date invalide") from exc
+
+    if not crud.delete_monthly_declaration(
+        db,
+        contract_id=contract_id,
+        month=selected_month,
+    ):
+        raise HTTPException(status_code=404, detail="Déclaration introuvable")
+    db.commit()
+    return RedirectResponse(
+        url=(
+            f"/contracts/{contract_id}/pajemploi"
+            f"?month={selected_month.isoformat()}&reopened=1"
+        ),
+        status_code=303,
     )
 
 
@@ -2031,6 +2141,9 @@ def payments_page(
             "prefill_period_start": period_start.isoformat() if period_start else None,
             "prefill_period_end": period_end.isoformat() if period_end else None,
             "prefill_amount": amount,
+            "return_month": period_start.replace(day=1).isoformat()
+            if period_start
+            else None,
             "saved": saved,
             "deleted": deleted,
             "current_section": "payments",
@@ -2047,6 +2160,7 @@ def create_payment_route(
     amount: str = Form(...),
     paid_at: str = Form(...),
     kind: str = Form(...),
+    return_month: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     from .models import PaymentKind
@@ -2055,16 +2169,38 @@ def create_payment_route(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
 
+    try:
+        parsed_period_start = date_from_iso(period_start)
+        parsed_period_end = date_from_iso(period_end)
+        parsed_paid_at = date_from_iso(paid_at)
+        parsed_kind = PaymentKind(kind)
+        parsed_amount = float(amount)
+        selected_month = (
+            date_from_iso(return_month).replace(day=1)
+            if return_month
+            else None
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Valeur invalide") from exc
+
     crud.create_payment(
         db,
         contract_id=contract_id,
-        period_start=date_from_iso(period_start),
-        period_end=date_from_iso(period_end),
-        amount=float(amount),
-        paid_at=date_from_iso(paid_at),
-        kind=PaymentKind(kind),
+        period_start=parsed_period_start,
+        period_end=parsed_period_end,
+        amount=parsed_amount,
+        paid_at=parsed_paid_at,
+        kind=parsed_kind,
     )
     db.commit()
+    if selected_month:
+        return RedirectResponse(
+            url=(
+                f"/contracts/{contract_id}/pajemploi"
+                f"?month={selected_month.isoformat()}&payment_saved=1"
+            ),
+            status_code=303,
+        )
     return RedirectResponse(url=f"/contracts/{contract_id}/payments?saved=1", status_code=303)
 
 
@@ -2184,41 +2320,93 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
             end=month_end,
             as_of=today,
         )
+        declaration = crud.get_monthly_declaration(
+            db,
+            contract_id=contract.id,
+            month=month_start,
+        )
+        payment_recorded = any(
+            payment.kind == PaymentKind.MONTHLY
+            and payment.period_start <= month_end
+            and payment.period_end >= month_start
+            for payment in crud.list_payments(db, contract.id)
+        )
+        workflow_status = monthly_workflow_status(
+            data_status=completeness.status,
+            declaration_confirmed=declaration is not None,
+            payment_recorded=payment_recorded,
+        )
 
-        status_details = {
-            MonthDataStatus.SCHEDULE_MISSING: {
+        if workflow_status == MonthlyWorkflowStatus.SETUP_REQUIRED:
+            status_details = {
                 "label": "Planning à compléter",
                 "tone": "warning",
                 "action_label": "Compléter le planning",
                 "action_href": f"/contracts/{contract.id}/settings",
-            },
-            MonthDataStatus.NOT_STARTED: {
-                "label": "Mois à venir",
-                "tone": "neutral",
-                "action_label": "Ouvrir le calendrier",
-                "action_href": f"/contracts/{contract.id}/calendar",
-            },
-            MonthDataStatus.INCOMPLETE: {
-                "label": f"{completeness.missing_due_days} jour(s) en retard",
-                "tone": "warning",
-                "action_label": "Completer le mois",
-                "action_href": f"/contracts/{contract.id}/calendar",
-            },
-            MonthDataStatus.UP_TO_DATE: {
-                "label": "À jour jusqu'à aujourd'hui",
-                "tone": "ok",
-                "action_label": "Continuer le suivi",
-                "action_href": f"/contracts/{contract.id}/calendar",
-            },
-            MonthDataStatus.COMPLETE: {
-                "label": "Mois complet",
-                "tone": "ok",
-                "action_label": "Préparer Pajemploi",
-                "action_href": (
-                    f"/contracts/{contract.id}/pajemploi?month={month_start.isoformat()}"
+            }
+        elif workflow_status == MonthlyWorkflowStatus.DATA_ENTRY:
+            data_details = {
+                MonthDataStatus.NOT_STARTED: ("Mois à venir", "neutral"),
+                MonthDataStatus.INCOMPLETE: (
+                    f"{completeness.missing_due_days} jour(s) en retard",
+                    "warning",
                 ),
-            },
-        }[completeness.status]
+                MonthDataStatus.UP_TO_DATE: (
+                    "À jour jusqu'à aujourd'hui",
+                    "ok",
+                ),
+            }
+            label, tone = data_details[completeness.status]
+            status_details = {
+                "label": label,
+                "tone": tone,
+                "action_label": (
+                    "Compléter le mois"
+                    if completeness.status == MonthDataStatus.INCOMPLETE
+                    else "Continuer le suivi"
+                ),
+                "action_href": f"/contracts/{contract.id}/calendar",
+            }
+        else:
+            status_details = {
+                MonthlyWorkflowStatus.READY_TO_DECLARE: {
+                    "label": "Prêt à déclarer",
+                    "tone": "ok",
+                    "action_label": "Préparer Pajemploi",
+                    "action_href": (
+                        f"/contracts/{contract.id}/pajemploi"
+                        f"?month={month_start.isoformat()}"
+                    ),
+                },
+                MonthlyWorkflowStatus.DECLARED: {
+                    "label": "Déclaration confirmée",
+                    "tone": "ok",
+                    "action_label": "Enregistrer le paiement",
+                    "action_href": (
+                        f"/contracts/{contract.id}/payments"
+                        f"?period_start={month_start.isoformat()}"
+                        f"&period_end={month_end.isoformat()}"
+                    ),
+                },
+                MonthlyWorkflowStatus.PAYMENT_RECORDED: {
+                    "label": "Déclaration à confirmer",
+                    "tone": "warning",
+                    "action_label": "Confirmer la déclaration",
+                    "action_href": (
+                        f"/contracts/{contract.id}/pajemploi"
+                        f"?month={month_start.isoformat()}"
+                    ),
+                },
+                MonthlyWorkflowStatus.CLOSED: {
+                    "label": "Mois clôturé",
+                    "tone": "ok",
+                    "action_label": "Voir le récapitulatif",
+                    "action_href": (
+                        f"/contracts/{contract.id}/pajemploi"
+                        f"?month={month_start.isoformat()}"
+                    ),
+                },
+            }[workflow_status]
 
         items.append(
             {
@@ -2236,6 +2424,7 @@ def contracts_summary(request: Request, db: Session = Depends(get_db)):
                 "days_expected": completeness.expected_days,
                 "missing_days": completeness.missing_days,
                 "data_status": completeness.status.value,
+                "workflow_status": workflow_status.value,
                 **status_details,
             }
         )

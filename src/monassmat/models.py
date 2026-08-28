@@ -122,6 +122,11 @@ class Contract(Base):
         cascade="all, delete-orphan",
     )
 
+    monthly_declarations: Mapped[list["MonthlyDeclaration"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+    )
+
     paid_leaves: Mapped[list["PaidLeave"]] = relationship(
         back_populates="contract",
         cascade="all, delete-orphan",
@@ -302,3 +307,25 @@ class Payment(Base):
     )
 
     contract: Mapped["Contract"] = relationship(back_populates="payments")
+
+
+class MonthlyDeclaration(Base):
+    __tablename__ = "monthly_declaration"
+    __table_args__ = (
+        UniqueConstraint(
+            "contract_id",
+            "month",
+            name="uq_monthly_declaration_contract_month",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_id: Mapped[int] = mapped_column(
+        ForeignKey("contract.id"), nullable=False
+    )
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    declared_on: Mapped[date] = mapped_column(Date, nullable=False)
+
+    contract: Mapped["Contract"] = relationship(
+        back_populates="monthly_declarations"
+    )

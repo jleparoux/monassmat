@@ -6,6 +6,7 @@ from monassmat.calculations import (
     ContractFacts,
     ContractYearMode,
     MonthDataStatus,
+    MonthlyWorkflowStatus,
     PaidLeaveMethod,
     Period,
     ScheduledDayFacts,
@@ -20,6 +21,7 @@ from monassmat.calculations import (
     contract_monthly_salary,
     evaluate_month_completeness,
     hours_in_period,
+    monthly_workflow_status,
     paid_leave_acquired_days,
     paid_leave_reference_period,
     paid_leave_taken_dates,
@@ -31,6 +33,66 @@ from monassmat.calculations import (
     validate_weekly_schedule,
     weekly_schedule_total,
 )
+
+
+@pytest.mark.parametrize(
+    ("data_status", "declared", "paid", "expected"),
+    [
+        (
+            MonthDataStatus.SCHEDULE_MISSING,
+            False,
+            False,
+            MonthlyWorkflowStatus.SETUP_REQUIRED,
+        ),
+        (
+            MonthDataStatus.INCOMPLETE,
+            False,
+            False,
+            MonthlyWorkflowStatus.DATA_ENTRY,
+        ),
+        (
+            MonthDataStatus.INCOMPLETE,
+            True,
+            True,
+            MonthlyWorkflowStatus.DATA_ENTRY,
+        ),
+        (
+            MonthDataStatus.COMPLETE,
+            False,
+            False,
+            MonthlyWorkflowStatus.READY_TO_DECLARE,
+        ),
+        (
+            MonthDataStatus.COMPLETE,
+            True,
+            False,
+            MonthlyWorkflowStatus.DECLARED,
+        ),
+        (
+            MonthDataStatus.COMPLETE,
+            False,
+            True,
+            MonthlyWorkflowStatus.PAYMENT_RECORDED,
+        ),
+        (
+            MonthDataStatus.COMPLETE,
+            True,
+            True,
+            MonthlyWorkflowStatus.CLOSED,
+        ),
+    ],
+)
+def test_monthly_workflow_status(
+    data_status,
+    declared,
+    paid,
+    expected,
+):
+    assert monthly_workflow_status(
+        data_status=data_status,
+        declaration_confirmed=declared,
+        payment_recorded=paid,
+    ) == expected
 
 
 def test_prepare_pajemploi_declaration_52_weeks_with_extra_hours():

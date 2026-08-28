@@ -828,6 +828,63 @@ html[data-theme="dark"] .planned-week:has(input:not(:checked)) { background: rgb
   color: var(--muted);
 }
 
+.monthly-workflow { margin-bottom: 14px; }
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.workflow-step {
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+.workflow-step__number {
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  display: inline-flex;
+  flex: 0 0 28px;
+  font-size: 12px;
+  font-weight: 700;
+  height: 28px;
+  justify-content: center;
+}
+.workflow-step div { display: grid; gap: 3px; min-width: 0; }
+.workflow-step strong { font-size: 13px; }
+.workflow-step div span { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.workflow-step.is-current { border-color: rgba(37, 99, 235, 0.5); }
+.workflow-step.is-current .workflow-step__number { background: #2563eb; border-color: #2563eb; color: #fff; }
+.workflow-step.is-done { background: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.35); }
+.workflow-step.is-done .workflow-step__number { background: #16a34a; border-color: #16a34a; color: #fff; }
+.copy-value { align-items: center; display: inline-flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.copy-button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 6px;
+}
+.copy-button:hover { border-color: #2563eb; color: #2563eb; }
+.copy-button.is-copied { border-color: rgba(34, 197, 94, 0.5); color: #16a34a; }
+.declaration-confirmed { align-items: center; display: flex; justify-content: space-between; gap: 10px; }
+.declaration-confirmed form { flex: 0 0 auto; }
+.declaration-form { align-items: end; display: grid; gap: 10px; grid-template-columns: minmax(150px, 1fr) auto; }
+.declaration-form .field { margin: 0; }
+
+@media (max-width: 720px) {
+  .workflow-steps { grid-template-columns: 1fr; }
+  .declaration-form { align-items: stretch; grid-template-columns: 1fr; }
+}
+
 .modal {
   position: fixed;
   inset: 0;
