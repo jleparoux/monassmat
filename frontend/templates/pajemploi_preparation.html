@@ -3,17 +3,16 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">Preparation Pajemploi</h1>
-    <p class="page-subtitle">Champs a reporter pour {{ month_label }}, calcules contrat par contrat.</p>
+    <h1 class="page-title">Préparation Pajemploi</h1>
+    <p class="page-subtitle">Les champs à vérifier et à reporter pour {{ month_label }}.</p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/calendar?initial_date={{ period_start }}">Calendrier</a>
-    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/export/pajemploi.csv?month={{ period_start }}">Telecharger le CSV</a>
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/export/pajemploi.csv?month={{ period_start }}">Télécharger le CSV</a>
   </div>
 </div>
 
-<div class="summary-nav">
-  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/pajemploi?month={{ previous_month }}">← Mois precedent</a>
+<div class="summary-nav summary-nav--period" aria-label="Choisir le mois de déclaration">
+  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/pajemploi?month={{ previous_month }}">← Mois précédent</a>
   <strong>{{ month_label }}</strong>
   <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/pajemploi?month={{ next_month }}">Mois suivant →</a>
 </div>

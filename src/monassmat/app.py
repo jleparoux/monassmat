@@ -1357,7 +1357,7 @@ def pajemploi_preparation_page(
         request,
         "pajemploi_preparation.html",
         {
-            "title": "Preparation Pajemploi",
+            "title": "Préparation Pajemploi",
             "current_section": "pajemploi",
             "declared": declared,
             "reopened": reopened,
@@ -1458,7 +1458,7 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
         request,
         "contract_settings.html",
         {
-            "title": "Parametres",
+            "title": "Contrat et paramètres",
             "contract_id": contract_id,
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "contract": contract,
@@ -2080,7 +2080,7 @@ def year_summary_page(
         request,
         "year_summary_page.html",
         {
-            "title": "Synthese annuelle",
+            "title": f"Synthèse {target_year}",
             "contract_id": contract_id,
             "contract_name": contract.name,
             "prev_year": target_year - 1,

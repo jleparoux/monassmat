@@ -6,6 +6,8 @@
 - Nouvelle vue d'ensemble par contrat avec prochaine action et parcours mensuel explicite
 - Navigation stable entre calendrier, declaration, conges payes, synthese, paiements et contrat
 - Conservation du mois du calendrier lors du passage a la preparation de la declaration
+- Parametres structures en sections et saisie des paiements guidee depuis la declaration
+- Synthese annuelle allegee avec selection d'annee et export directement accessibles
 
 ### Preparation Pajemploi
 - Fiche mensuelle par enfant avec statut calculable ou incomplet

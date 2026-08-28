@@ -7,12 +7,11 @@
     <p class="page-subtitle">Droits acquis et congés imputés, en jours ouvrables.</p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/summary/year">Synthèse annuelle</a>
-    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/calendar">Calendrier</a>
+    <a class="btn btn-primary" href="#new-paid-leave">Ajouter une période</a>
   </div>
 </div>
 
-<div class="summary-nav">
+<div class="summary-nav summary-nav--period" aria-label="Choisir la période de congés payés">
   <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/paid-leave?year={{ previous_year }}">← Période précédente</a>
   <strong>1er juin {{ period_start.year }} → 31 mai {{ period_end.year }}</strong>
   <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/paid-leave?year={{ next_year }}">Période suivante →</a>
@@ -148,7 +147,7 @@
       <div class="empty">Aucun congé n'est encore imputé sur cette période.</div>
     {% endif %}
 
-    <details class="inline-editor" {% if not absence_rows %}open{% endif %}>
+    <details class="inline-editor" id="new-paid-leave" {% if not absence_rows %}open{% endif %}>
       <summary>+ Ajouter une période de congé</summary>
       <form method="post" action="/contracts/{{ contract_id }}/paid-leave/absences">
         <input type="hidden" name="reference_period_start" value="{{ period_start }}" />

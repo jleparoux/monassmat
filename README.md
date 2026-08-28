@@ -7,6 +7,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - La vue `/contracts/{id}/overview` rassemble la prochaine action, l'avancement `calendrier → declaration → paiement`, les reperes du mois et les points a fiabiliser.
 - Une navigation de contrat stable relie la vue d'ensemble, le calendrier, la declaration, les conges payes, la synthese, les paiements et les parametres.
 - Le mois selectionne dans le calendrier est conserve lors du passage a la preparation de la declaration.
+- Les parametres sont organises en informations, planning et remuneration; les paiements distinguent explicitement le versement reel des montants calcules.
 
 ## Calendrier
 - Page: `/contracts/{id}/calendar`

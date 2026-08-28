@@ -1114,7 +1114,101 @@ a.attention-item:hover { border-color: var(--accent); }
 .paid-leave-year-row > span { display: grid; gap: 3px; }
 .paid-leave-year-row small { color: var(--muted); }
 
+.summary-nav--period {
+  justify-content: space-between;
+  margin: -4px 0 12px;
+}
+.summary-nav--period strong { font-size: 14px; }
+
+.settings-section-nav {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  padding: 5px;
+}
+.settings-section-nav a {
+  border-radius: 8px;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  text-decoration: none;
+}
+.settings-section-nav a:hover { background: var(--bg); color: var(--text); }
+.settings-form { display: grid; gap: 0; }
+.settings-form-section {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0 22px;
+  scroll-margin-top: 12px;
+}
+.settings-form-section + .settings-form-section { padding-top: 22px; }
+.settings-form-section__header {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 30px 1fr;
+  margin-bottom: 14px;
+}
+.settings-form-section__header > span {
+  align-items: center;
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 50%;
+  color: #1d4ed8;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+.settings-form-section__header > div { display: grid; gap: 2px; }
+.settings-form-section__header small { color: var(--muted); }
+.settings-save-bar {
+  align-items: center;
+  background: var(--card);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-top: 16px;
+}
+.settings-save-bar > span { color: var(--muted); font-size: 12px; }
+
+.payment-entry-card { border-color: rgba(37, 99, 235, 0.25); }
+.payment-origin { align-items: center; display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.payment-origin .link { margin-left: auto; }
+.payment-history-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, auto) auto;
+  padding: 13px 0;
+}
+.payment-history-row:first-child { padding-top: 0; }
+.payment-history-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.payment-history-row > div { display: grid; gap: 3px; }
+.payment-history-row span { color: var(--muted); font-size: 12px; }
+.payment-history-row__amount { text-align: right; }
+.payment-empty {
+  align-items: flex-start;
+  background: var(--bg);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 7px;
+  padding: 18px;
+}
+.payment-empty span { color: var(--muted); line-height: 1.5; }
+.payment-empty .btn { margin-top: 3px; }
+
 html[data-theme="dark"] .paid-leave-kpis .kpi--primary { background: rgba(37, 99, 235, 0.16); }
+html[data-theme="dark"] .settings-form-section__header > span { color: #93c5fd; }
 
 @media (max-width: 720px) {
   .workflow-steps { grid-template-columns: 1fr; }
@@ -1133,6 +1227,11 @@ html[data-theme="dark"] .paid-leave-kpis .kpi--primary { background: rgba(37, 99
   .paid-leave-year-row > span:nth-child(2),
   .paid-leave-year-row > span:nth-child(3) { grid-column: 1; }
   .paid-leave-year-row > a { grid-column: 2; grid-row: 1; }
+  .settings-save-bar { align-items: stretch; flex-direction: column; }
+  .settings-save-bar .btn { text-align: center; }
+  .payment-history-row { align-items: start; grid-template-columns: 1fr auto; }
+  .payment-history-row__amount { grid-column: 1; text-align: left; }
+  .payment-history-row form { grid-column: 2; grid-row: 1; }
 }
 
 @media (max-width: 520px) {

@@ -3,13 +3,23 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">Parametres du contrat</h1>
-    <p class="page-subtitle">Met a jour les valeurs de reference du contrat.</p>
+    <h1 class="page-title">Contrat et paramètres</h1>
+    <p class="page-subtitle">Les faits contractuels utilisés par les calculs, avec leur date d'application.</p>
   </div>
+  {% if contract.year_mode.value == "incomplete" %}
   <div class="page-actions">
     <a class="btn btn-secondary" href="/contracts/{{ contract.id }}/planned-weeks">Programmer les semaines</a>
   </div>
+  {% endif %}
 </div>
+
+<nav class="settings-section-nav" aria-label="Sections des paramètres">
+  <a href="#informations">Informations</a>
+  <a href="#planning">Planning</a>
+  <a href="#remuneration">Rémunération</a>
+  <a href="#historique">Historique</a>
+  <a href="#jours-feries">Jours fériés</a>
+</nav>
 
 <section class="card">
   <div class="card__body">
@@ -20,14 +30,19 @@
       <div class="notice notice--ok">Snapshot supprime.</div>
     {% endif %}
 
-    <form method="post" action="/contracts/{{ contract.id }}/settings">
+    <form class="settings-form" method="post" action="/contracts/{{ contract.id }}/settings">
+      <section class="settings-form-section" id="informations">
+        <div class="settings-form-section__header">
+          <span>1</span>
+          <div><strong>Informations contractuelles</strong><small>Identité, durée et organisation générale de l'accueil.</small></div>
+        </div>
       <label class="field">
         <span>Nom du contrat</span>
         <input name="contract_name" type="text" value="{{ contract.name or '' }}" />
       </label>
       <div class="field-group">
         <label class="field">
-          <span>Date de debut</span>
+          <span>Date de début</span>
           <input name="start_date" type="date" value="{{ contract.start_date }}" required />
         </label>
         <label class="field">
@@ -37,8 +52,9 @@
       </div>
 
       <label class="field">
-        <span>Application des parametres a partir du</span>
+        <span>Application de ces paramètres à partir du</span>
         <input name="effective_from" type="date" value="{{ effective_from }}" required />
+        <small class="hint">Une nouvelle date conserve l'historique des anciennes valeurs.</small>
       </label>
 
       <div class="field-group">
@@ -53,7 +69,7 @@
       </div>
 
       <label class="field">
-        <span>Type d'accueil regulier</span>
+        <span>Type d'accueil régulier</span>
         <select name="year_mode" required>
           {% for mode in year_modes %}
             <option value="{{ mode }}" {% if mode == contract.year_mode.value %}selected{% endif %}>
@@ -62,14 +78,20 @@
           {% endfor %}
         </select>
       </label>
+      </section>
 
+      <section class="settings-form-section" id="planning">
+        <div class="settings-form-section__header">
+          <span>2</span>
+          <div><strong>Planning hebdomadaire</strong><small>La référence utilisée pour contrôler les mois et les absences.</small></div>
+        </div>
       <div class="schedule-section" data-weekly-schedule>
         <div>
           <div class="title">Planning hebdomadaire contractuel</div>
-          <p class="hint">Renseignez les heures prevues pour chaque jour. Le total doit correspondre aux heures par semaine.</p>
+          <p class="hint">Renseignez les heures prévues pour chaque jour. Le total doit correspondre aux heures par semaine.</p>
         </div>
         {% if contract.monday_hours is none %}
-          <div class="notice notice--warning">Planning absent de cet ancien contrat. Completez-le pour fiabiliser les deductions d'absence.</div>
+          <div class="notice notice--warning">Planning absent de cet ancien contrat. Complétez-le pour fiabiliser le suivi mensuel et les déductions d'absence.</div>
         {% endif %}
         <div class="schedule-grid">
           <label class="field"><span>Lundi</span><input name="monday_hours" data-schedule-hours type="number" min="0" step="0.01" value="{{ contract.monday_hours if contract.monday_hours is not none else '' }}" /></label>
@@ -89,16 +111,22 @@
       <div class="notice notice--neutral">
         Les droits à congés ne sont pas déduits du nombre de semaines du contrat seul. Ils seront calculés depuis l'historique réel dans la synthèse annuelle.
       </div>
+      </section>
 
+      <section class="settings-form-section" id="remuneration">
+        <div class="settings-form-section__header">
+          <span>3</span>
+          <div><strong>Rémunération et frais</strong><small>Les tarifs nets prévus au contrat, sans estimation silencieuse.</small></div>
+        </div>
       <div class="field-group">
         <label class="field">
           <span>Tarif horaire net de base</span>
           <input name="hourly_rate" type="number" min="0.01" step="0.01" value="{{ contract.hourly_rate }}" required />
         </label>
         <label class="field">
-          <span>Tarif net des heures complementaires</span>
+          <span>Tarif net des heures complémentaires</span>
           <input name="complementary_hourly_rate" type="number" min="0.01" step="0.01" value="{{ contract.complementary_hourly_rate or '' }}" required />
-          <small class="hint">Saisir le tarif de base si aucune majoration n'est prevue au contrat.</small>
+          <small class="hint">Saisissez le tarif de base si aucune majoration n'est prévue au contrat.</small>
         </label>
       </div>
 
@@ -107,7 +135,7 @@
 
       <div class="field-group">
         <label class="field">
-          <span>Coefficient de majoration au-dela de 45 h/semaine (minimum 1,10)</span>
+          <span>Coefficient de majoration au-delà de 45 h/semaine (minimum 1,10)</span>
           <input name="majoration_rate" type="number" min="1.10" step="0.01" value="{{ contract.majoration_rate or '' }}" />
         </label>
         <label class="field">
@@ -126,23 +154,25 @@
           <input name="fee_maintenance_amount" type="number" step="0.01" value="{{ contract.fee_maintenance_amount or '' }}" />
         </label>
       </div>
+      </section>
 
-      <div class="actions">
-        <button class="btn btn-primary" type="submit">Sauvegarder</button>
+      <div class="settings-save-bar">
+        <span>Les calculs futurs utiliseront les valeurs applicables à leur date.</span>
+        <button class="btn btn-primary" type="submit">Enregistrer les paramètres</button>
       </div>
     </form>
   </div>
 </section>
 
-<section class="card">
+<section class="card" id="historique">
   <div class="card__header">
-    <div class="title">Historique des parametres</div>
+    <div><div class="title">Historique des paramètres</div><div class="muted">Chaque changement daté reste consultable et modifiable.</div></div>
   </div>
   <div class="card__body">
     {% if snapshots %}
       <div class="summary-table summary-table--settings">
         <div class="summary-table__row summary-table__header">
-          <span>Actif a partir du</span>
+          <span>Actif à partir du</span>
           <span>Heures/sem</span>
           <span>Sem/an</span>
           <span>Tarif</span>
@@ -151,7 +181,7 @@
         </div>
         {% for snap in snapshots %}
           <div class="summary-table__row">
-            <span>{{ snap.valid_from }}</span>
+            <span>{{ snap.valid_from.strftime('%d/%m/%Y') }}</span>
             <span>{{ snap.hours_per_week | round(2) }} h</span>
             <span>{{ snap.weeks_per_year | round(2) }}</span>
             <span>{{ snap.hourly_rate | round(2) }} €</span>
@@ -164,15 +194,15 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty">Aucun snapshot pour l'instant. Sauvegarde pour en creer un.</div>
+      <div class="empty">Aucun historique pour l'instant. Le premier enregistrement créera une version datée.</div>
     {% endif %}
   </div>
 </section>
 
 
-<section class="card">
+<section class="card" id="jours-feries">
   <div class="card__header">
-    <div class="title">Jours fériés</div>
+    <div><div class="title">Jours fériés</div><div class="muted">Importez les jours officiels avant de compléter les calendriers concernés.</div></div>
   </div>
   <div class="card__body">
     {% if holidays_imported is defined %}

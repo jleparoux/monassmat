@@ -3,27 +3,25 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">Synthese annuelle</h1>
-    <p class="page-subtitle">Vue globale du contrat sur une annee complete.</p>
+    <h1 class="page-title">Synthèse {{ year }}</h1>
+    <p class="page-subtitle">Les mois complets, les écarts et les congés payés réunis sur une année.</p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/calendar">Calendrier</a>
-    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/export/yearly.csv?year={{ year }}">Exporter en CSV</a>
-    <a class="btn" href="/contracts/{{ contract_id }}/settings">Parametres</a>
+    <a class="btn btn-secondary" href="/contracts/{{ contract_id }}/export/yearly.csv?year={{ year }}">Télécharger le CSV</a>
   </div>
+</div>
+
+<div class="summary-nav summary-nav--period" aria-label="Choisir l'année">
+  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year?year={{ prev_year }}">← {{ prev_year }}</a>
+  <strong>Année {{ year }}</strong>
+  <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year?year={{ next_year }}">{{ next_year }} →</a>
 </div>
 
 <section class="card">
   <div class="card__header">
     <div>
-      <div class="title">
-        Contrat #{{ contract_id }}{% if contract_name %} - {{ contract_name }}{% endif %} · Annee {{ year }}
-      </div>
-      <div class="muted">{{ period_start }} → {{ period_end }}</div>
-    </div>
-    <div class="summary-nav">
-      <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year?year={{ prev_year }}">← {{ prev_year }}</a>
-      <a class="btn btn-secondary btn-small" href="/contracts/{{ contract_id }}/summary/year?year={{ next_year }}">{{ next_year }} →</a>
+      <div class="title">Bilan de l'année</div>
+      <div class="muted">Du {{ period_start.strftime('%d/%m/%Y') }} au {{ period_end.strftime('%d/%m/%Y') }}</div>
     </div>
   </div>
   <div class="card__body">
