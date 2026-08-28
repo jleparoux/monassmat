@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% set planning_incomplete = contract.monday_hours is none or contract.tuesday_hours is none or contract.wednesday_hours is none or contract.thursday_hours is none or contract.friday_hours is none or contract.saturday_hours is none or contract.sunday_hours is none %}
 
 <div class="page-header">
   <div>
@@ -54,7 +55,13 @@
       <label class="field">
         <span>Application de ces paramètres à partir du</span>
         <input name="effective_from" type="date" value="{{ effective_from }}" required />
-        <small class="hint">Une nouvelle date conserve l'historique des anciennes valeurs.</small>
+        <small class="hint">
+          {% if planning_incomplete %}
+            La date de début du contrat est proposée car aucun planning hebdomadaire n'est encore enregistré. Modifiez-la si cet horaire ne s'appliquait pas depuis le début.
+          {% else %}
+            Une nouvelle date conserve l'historique des anciennes valeurs.
+          {% endif %}
+        </small>
       </label>
 
       <div class="field-group">
@@ -90,8 +97,10 @@
           <div class="title">Planning hebdomadaire contractuel</div>
           <p class="hint">Renseignez les heures prévues pour chaque jour. Le total doit correspondre aux heures par semaine.</p>
         </div>
-        {% if contract.monday_hours is none %}
-          <div class="notice notice--warning">Planning absent de cet ancien contrat. Complétez-le pour fiabiliser le suivi mensuel et les déductions d'absence.</div>
+        {% if planning_incomplete %}
+          <div class="notice notice--warning">
+            Le calendrier mensuel et le planning hebdomadaire sont deux éléments distincts. Renseignez ici les heures habituelles du contrat pour fiabiliser le suivi et les déductions d'absence. Ce planning sera appliqué à partir du {{ effective_from }} ; <a class="link" href="#informations">modifier cette date</a> si nécessaire.
+          </div>
         {% endif %}
         <div class="schedule-grid">
           <label class="field"><span>Lundi</span><input name="monday_hours" data-schedule-hours type="number" min="0" step="0.01" value="{{ contract.monday_hours if contract.monday_hours is not none else '' }}" /></label>

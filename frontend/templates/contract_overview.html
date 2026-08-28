@@ -92,9 +92,15 @@
     <div class="card__header"><div class="title">Points d'attention</div></div>
     <div class="card__body overview-alerts">
       {% if data_status == "schedule_missing" %}
-        <a class="attention-item attention-item--warning" href="/contracts/{{ contract_id }}/settings">
-          <span>1</span><div><strong>Planning contractuel absent</strong><small>Complétez les heures habituelles de la semaine.</small></div>
-        </a>
+        {% if schedule_issue == "history" %}
+          <a class="attention-item attention-item--warning" href="/contracts/{{ contract_id }}/settings#historique">
+            <span>1</span><div><strong>Date d'application du planning à vérifier</strong><small>Le planning actuel ne couvre pas toute la période affichée.</small></div>
+          </a>
+        {% else %}
+          <a class="attention-item attention-item--warning" href="/contracts/{{ contract_id }}/settings#planning">
+            <span>1</span><div><strong>Planning hebdomadaire contractuel absent</strong><small>Le calendrier mensuel ne remplace pas les heures habituelles du lundi au dimanche.</small></div>
+          </a>
+        {% endif %}
       {% else %}
         <div class="attention-item attention-item--ok"><span>✓</span><div><strong>Planning exploitable</strong><small>Le mois peut être contrôlé.</small></div></div>
       {% endif %}

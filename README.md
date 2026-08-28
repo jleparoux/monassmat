@@ -22,6 +22,7 @@ Le suivi simplifie des contrats d'assistante maternelle.
 - Types de journee: travail, absence, conge sans solde, jour ferie
 - Parametres: chaque sauvegarde cree un snapshot date (champ "Application des parametres a partir du")
 - Planning contractuel: les heures prevues sont renseignees pour chacun des sept jours et leur total doit correspondre aux heures hebdomadaires. Les anciens contrats restent volontairement sans planning jusqu'a leur prochaine saisie: aucune valeur n'est inventee pendant la migration.
+- Pour un ancien contrat sans planning hebdomadaire, le formulaire propose la date de debut du contrat comme date d'application. L'utilisateur doit la modifier si l'horaire renseigne n'etait pas applicable depuis le debut. Le calendrier mensuel ne remplace jamais ce planning de reference.
 - Semaines programmees: `/contracts/{id}/planned-weeks?year=YYYY`. Chaque semaine chevauchant l'annee est enregistree explicitement comme prevue ou non prevue; les annees historiques restent non configurees jusqu'a leur validation par l'utilisateur.
 - Completude mensuelle: seuls les jours prevus par le planning contractuel doivent etre renseignes. Un mois est distingue comme planning manquant, a completer, a jour jusqu'a aujourd'hui ou complet. La preparation Pajemploi reste bloquee tant que le mois n'est pas complet.
 - Synthese annuelle: les totaux agregent uniquement les mois complets. Les mois incomplets, futurs ou hors contrat ne sont jamais interpretes comme des mois reels a zero.

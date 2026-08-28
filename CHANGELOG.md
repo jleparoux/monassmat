@@ -3,6 +3,7 @@
 ## Non publie
 
 ### Navigation et vue d'ensemble
+- Distinction explicite entre calendrier mensuel et planning hebdomadaire contractuel, avec date d'application adaptee aux anciens contrats
 - Nouvelle page d'accueil canonique `/` avec synthese mensuelle, action prioritaire et cartes de contrats compactes; `/contracts` reste une redirection compatible
 - Nouvelle vue d'ensemble par contrat avec prochaine action et parcours mensuel explicite
 - Navigation stable entre calendrier, declaration, conges payes, synthese, paiements et contrat

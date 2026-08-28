@@ -1448,6 +1448,10 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
     snapshots = crud.list_settings_snapshots(db, contract_id)
+    schedule_missing = any(
+        getattr(contract, field_name) is None
+        for field_name in WEEKLY_SCHEDULE_FIELDS
+    )
 
     return templates.TemplateResponse(
         request,
@@ -1458,7 +1462,12 @@ def contract_settings(contract_id: int, request: Request, db: Session = Depends(
             "contract_name": contract.name or f"Contrat #{contract_id}",
             "contract": contract,
             "snapshots": snapshots,
-            "effective_from": date.today().isoformat(),
+            "effective_from": (
+                contract.start_date.isoformat()
+                if schedule_missing
+                else date.today().isoformat()
+            ),
+            "schedule_missing": schedule_missing,
             "today_year": date.today().year,
             "current_section": "settings",
             "year_modes": [m.value for m in ContractYearMode],
@@ -1704,6 +1713,7 @@ def save_contract_settings(
             "effective_from": effective_from,
             "today_year": date.today().year,
             "saved": True,
+            "current_section": "settings",
             "year_modes": [m.value for m in ContractYearMode],
         },
     )
@@ -3068,18 +3078,39 @@ def build_contract_month_status(
         declaration_confirmed=declaration is not None,
         payment_recorded=bool(monthly_payments),
     )
+    schedule_issue = None
 
     if workflow_status == MonthlyWorkflowStatus.SETUP_REQUIRED:
-        status_details = {
-            "label": "Planning à compléter",
-            "tone": "warning",
-            "action_label": "Compléter le contrat",
-            "action_detail": (
-                "Renseignez le planning hebdomadaire pour débloquer le suivi "
-                "et la déclaration."
-            ),
-            "action_href": f"/contracts/{contract.id}/settings",
-        }
+        current_schedule_complete = all(
+            getattr(contract, field_name) is not None
+            for field_name in WEEKLY_SCHEDULE_FIELDS
+        )
+        if current_schedule_complete:
+            schedule_issue = "history"
+            status_details = {
+                "label": "Historique du planning à vérifier",
+                "tone": "warning",
+                "action_label": "Vérifier la date d'application",
+                "action_detail": (
+                    "Le planning actuel est renseigné, mais il manque pour "
+                    "une partie de ce mois. Vérifiez la date d'application "
+                    "dans l'historique du contrat."
+                ),
+                "action_href": f"/contracts/{contract.id}/settings#historique",
+            }
+        else:
+            schedule_issue = "missing"
+            status_details = {
+                "label": "Planning hebdomadaire manquant",
+                "tone": "warning",
+                "action_label": "Renseigner le planning",
+                "action_detail": (
+                    "Le calendrier mensuel contient les journées réellement "
+                    "saisies, mais il ne remplace pas les heures habituelles "
+                    "du contrat, du lundi au dimanche."
+                ),
+                "action_href": f"/contracts/{contract.id}/settings#planning",
+            }
     elif workflow_status == MonthlyWorkflowStatus.DATA_ENTRY:
         data_details = {
             MonthDataStatus.NOT_STARTED: ("Mois à venir", "neutral"),
@@ -3186,6 +3217,7 @@ def build_contract_month_status(
         "days_expected": completeness.expected_days,
         "missing_days": completeness.missing_days,
         "data_status": completeness.status.value,
+        "schedule_issue": schedule_issue,
         **status_details,
     }
 
